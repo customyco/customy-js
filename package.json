@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "^8.5.23",
+      "esbuild": "^0.28.1",
+      "vitest": "^4.1.11",
+      "@vitest/mocker": "^4.1.11"
+    }
+  }
+}

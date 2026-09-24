@@ -1,0 +1,157 @@
+{
+  "name": "@customyai/customy-access",
+  "version": "0.3.0",
+  "description": "Customy Access — Official SDK for Identity & Access Management",
+  "license": "MIT",
+  "author": "Customy <hello@customy.ai>",
+  "homepage": "https://docs.customy.ai/sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/customyco/customy-js.git",
+    "directory": "packages/customy-access"
+  },
+  "bugs": {
+    "url": "https://github.com/customyco/customy-js/issues"
+  },
+  "keywords": [
+    "customy",
+    "auth",
+    "identity",
+    "access-management",
+    "oauth",
+    "saml",
+    "rbac",
+    "abac",
+    "react",
+    "sdk"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.mjs"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./edge": {
+      "import": {
+        "types": "./dist/edge.d.ts",
+        "default": "./dist/edge.mjs"
+      },
+      "require": {
+        "types": "./dist/edge.d.cts",
+        "default": "./dist/edge.cjs"
+      }
+    },
+    "./cookies": {
+      "import": {
+        "types": "./dist/cookies.d.ts",
+        "default": "./dist/cookies.mjs"
+      },
+      "require": {
+        "types": "./dist/cookies.d.cts",
+        "default": "./dist/cookies.cjs"
+      }
+    },
+    "./nextjs": {
+      "import": {
+        "types": "./dist/nextjs.d.ts",
+        "default": "./dist/nextjs.mjs"
+      },
+      "require": {
+        "types": "./dist/nextjs.d.cts",
+        "default": "./dist/nextjs.cjs"
+      }
+    },
+    "./generated": {
+      "import": {
+        "types": "./dist/generated.d.ts",
+        "default": "./dist/generated.mjs"
+      },
+      "require": {
+        "types": "./dist/generated.d.cts",
+        "default": "./dist/generated.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "react": [
+        "./dist/react.d.ts"
+      ],
+      "edge": [
+        "./dist/edge.d.ts"
+      ],
+      "nextjs": [
+        "./dist/nextjs.d.ts"
+      ],
+      "generated": [
+        "./dist/generated.d.ts"
+      ],
+      "cookies": [
+        "./dist/cookies.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "jose": "^5.2.2"
+  },
+  "peerDependencies": {
+    "next": ">=13",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "next": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "@types/react": "^19.0.0",
+    "next": "^15.5.24",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tsup": "^8.4.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.11"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

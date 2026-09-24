@@ -1,0 +1,50 @@
+name: publish
+
+# Un tag <paquete>-v<versión> publica ese paquete con trusted publishing (OIDC) y
+# provenance. Sin tokens: el environment "npm" exige aprobación humana.
+on:
+  push:
+    tags:
+      - "customy-access-v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Resolve package from tag
+        id: target
+        run: |
+          name="${GITHUB_REF_NAME%-v*}"
+          version="${GITHUB_REF_NAME##*-v}"
+          dir="packages/$name"
+          test -d "$dir" || { echo "::error::no existe $dir"; exit 1; }
+          actual="$(node -p "require('./$dir/package.json').version")"
+          test "$actual" = "$version" || { echo "::error::el tag $version no coincide con $actual"; exit 1; }
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+      - run: pnpm --dir "${{ steps.target.outputs.dir }}" typecheck
+      - run: pnpm --dir "${{ steps.target.outputs.dir }}" test
+      - run: pnpm --dir "${{ steps.target.outputs.dir }}" build
+      - run: pnpm dlx publint@0.3.24 --strict "${{ steps.target.outputs.dir }}"
+      - run: npm install --global npm@11.6.2
+      - name: Publish with provenance
+        working-directory: ${{ steps.target.outputs.dir }}
+        run: npm publish --access public --provenance
