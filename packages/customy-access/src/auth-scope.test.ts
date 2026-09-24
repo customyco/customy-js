@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { fixedAuthScopeConfigured, matchesFixedAuthScope, sessionMatchesFixedScope } from "./auth-scope";
 import { customyAuthProxyHandlers } from "./nextjs";
 
-const scope = { environmentId: "env_external", organizationSlug: "org_external", publishableKey: "pk_fixture", publicOrigin: "https://codifly.fixture.invalid" };
+const scope = { environmentId: "env_external", organizationSlug: "org_external", publishableKey: "pk_fixture", publicOrigin: "https://app.fixture.invalid" };
 const options = { ...scope, accessUrl: "https://access.fixture.invalid", enforceTenantScope: true, allowedAuthPaths: ["get-session", "sign-in/email"] };
 const context = (path: string) => ({ params: Promise.resolve({ path: path.split("/") }) });
 const session = () => ({ user: { id: "user_1" }, session: { userId: "user_1", environmentId: scope.environmentId, sourceEnvironmentId: scope.environmentId, expiresAt: new Date(Date.now() + 60000).toISOString() } });
@@ -13,7 +13,8 @@ describe("external application auth scope", () => {
     it("requires explicit canonical configuration", () => {
         expect(fixedAuthScopeConfigured(scope)).toBe(true);
         for (const key of Object.keys(scope)) expect(fixedAuthScopeConfigured({ ...scope, [key]: undefined })).toBe(false);
-        expect(fixedAuthScopeConfigured({ ...scope, publicOrigin: "https://user:pass@codifly.fixture.invalid" })).toBe(false);
+        // Origin with embedded credentials must be rejected (synthetic fixture).
+        expect(fixedAuthScopeConfigured({ ...scope, publicOrigin: "https://user:pass@app.fixture.invalid" })).toBe(false); // trufflehog:ignore
     });
     it("checks all repeated aliases and callback destinations", () => {
         expect(matchesFixedAuthScope(scope, [["envId", scope.environmentId], ["envId", "env_other"]])).toBe(false);
