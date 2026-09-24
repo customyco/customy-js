@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0
+
+### Added
+
+- `./server`: `createMachineTokenVerifier` and `verifyMachineRequest` verify
+  Access machine tokens (RS256 JWT, `client_credentials`) against the issuer's
+  JWKS for one product audience, returning the tenant from signed claims.
+- `m2m.getMachineToken`: requests a signed machine token from the standard
+  OIDC token endpoint; the audience is required.
+- `m2m.exchangeToken` (RFC 8693): a product exchanges an app's token it
+  received for one scoped to another product, on the app's behalf. The
+  verifier accepts these delegated tokens and exposes the acting product as
+  `principal.actor`.
+
+### Fixed
+
+- Session cookies are read under either naming generation, so sign-in keeps
+  working while an identity server and its apps roll out at different times.
+- `m2m.createApiKey`, `listApiKeys`, `revokeApiKey` and `introspect` call the
+  routes the server exposes; `introspect` returns `{ active }`.
+
 ## 0.3.0
 
 ### Breaking

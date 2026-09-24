@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ACCESS_COOKIE_BASE, ACCESS_PASSKEY_COOKIE, accessCookieBasePrefix } from "./cookies";
+import { ACCESS_COOKIE_BASE, ACCESS_PASSKEY_COOKIE, accessCookieBasePrefix, isScopedAccessSessionCookieName, preferCurrentAccessCookies } from "./cookies";
 import { cookies } from "next/headers";
 import { fixedAuthScopeConfigured, matchesFixedAuthScope, sessionMatchesFixedScope } from "./auth-scope";
 
@@ -86,7 +86,7 @@ function getCookieNames(accessUrl: string = "https://access.customy.ai") {
 }
 
 function isScopedSessionCookie(name: string) {
-    return /(?:__Secure-)?customy-(?:stg|prd|dev)-[^.]+\.session_token$/.test(name);
+    return isScopedAccessSessionCookieName(name);
 }
 
 function isFallbackSessionCookie(name: string) {
@@ -110,7 +110,7 @@ function collectCandidateCookieNames(names: string[]) {
 function resolveSessionCookieNameFromRequest(request: NextRequest, accessUrl: string) {
     const { allPossibleNames } = getCookieNames(accessUrl);
     const requestCookieNames = request.cookies.getAll().map((cookie) => cookie.name);
-    const scopedNames = requestCookieNames.filter(isScopedSessionCookie);
+    const scopedNames = preferCurrentAccessCookies(requestCookieNames.filter(isScopedSessionCookie));
     const fallbackNames = requestCookieNames.filter(
         (name) => isFallbackSessionCookie(name) && !scopedNames.includes(name),
     );
@@ -136,7 +136,7 @@ function resolveSessionCookieNameFromStore(
 ) {
     const { allPossibleNames } = getCookieNames(accessUrl);
     const storeCookieNames = cookieStore.getAll().map((cookie) => cookie.name);
-    const scopedNames = storeCookieNames.filter(isScopedSessionCookie);
+    const scopedNames = preferCurrentAccessCookies(storeCookieNames.filter(isScopedSessionCookie));
     const fallbackNames = storeCookieNames.filter(
         (name) => isFallbackSessionCookie(name) && !scopedNames.includes(name),
     );

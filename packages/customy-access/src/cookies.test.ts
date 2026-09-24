@@ -5,7 +5,9 @@ import {
     accessCookieNames,
     accessCookiePrefix,
     isAccessSessionCookieName,
+    isScopedAccessSessionCookieName,
     parseAccessCookieName,
+    preferCurrentAccessCookies,
 } from "./cookies";
 
 describe("Access cookie names", () => {
@@ -27,10 +29,10 @@ describe("Access cookie names", () => {
 
     it("parses base and application-scoped cookies and rejects anything else", () => {
         expect(parseAccessCookieName("__Secure-customy-prd.session_token")).toEqual({
-            secure: true, prefix: "customy-prd", envTag: "prd", environmentIdPrefix: null, kind: "session_token",
+            secure: true, prefix: "customy-prd", base: "customy", current: true, envTag: "prd", environmentIdPrefix: null, kind: "session_token",
         });
         expect(parseAccessCookieName("customy-stg-env_1234.state")).toEqual({
-            secure: false, prefix: "customy-stg-env_1234", envTag: "stg", environmentIdPrefix: "env_1234", kind: "state",
+            secure: false, prefix: "customy-stg-env_1234", base: "customy", current: true, envTag: "stg", environmentIdPrefix: "env_1234", kind: "state",
         });
         expect(parseAccessCookieName("customy-qa.session_token")).toBeNull();
         expect(parseAccessCookieName("other.session_token")).toBeNull();
@@ -41,5 +43,29 @@ describe("Access cookie names", () => {
         expect(isAccessSessionCookieName("__Secure-customy-dev-29375589.session_token")).toBe(true);
         expect(isAccessSessionCookieName("customy-prd.state")).toBe(false);
         expect(isAccessSessionCookieName("session_token")).toBe(false);
+    });
+});
+
+describe("names issued by an earlier Access version", () => {
+    const legacyScoped = "__Secure-legacy-auth-prd-env_3292.session_token";
+
+    it("parses any base with the Access format and marks it as not current", () => {
+        expect(parseAccessCookieName(legacyScoped)).toMatchObject({
+            base: "legacy-auth", current: false, envTag: "prd", environmentIdPrefix: "env_3292", kind: "session_token", secure: true,
+        });
+        expect(parseAccessCookieName("legacy-auth-stg.state")).toMatchObject({ base: "legacy-auth", environmentIdPrefix: null, kind: "state" });
+        expect(isAccessSessionCookieName(legacyScoped)).toBe(true);
+    });
+
+    it("matches scoped sessions for an environment regardless of the base", () => {
+        expect(isScopedAccessSessionCookieName(legacyScoped)).toBe(true);
+        expect(isScopedAccessSessionCookieName(legacyScoped, "env_3292abcdef")).toBe(true);
+        expect(isScopedAccessSessionCookieName(legacyScoped, "env_9999")).toBe(false);
+        expect(isScopedAccessSessionCookieName("__Secure-customy-prd.session_token")).toBe(false);
+    });
+
+    it("prefers current names without dropping earlier ones", () => {
+        expect(preferCurrentAccessCookies([legacyScoped, "customy-prd-env_3292.session_token", "session_token"]))
+            .toEqual(["customy-prd-env_3292.session_token", legacyScoped, "session_token"]);
     });
 });

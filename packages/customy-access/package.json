@@ -1,6 +1,6 @@
 {
   "name": "@customyai/customy-access",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Customy Access — Official SDK for Identity & Access Management",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -70,6 +70,16 @@
         "default": "./dist/cookies.cjs"
       }
     },
+    "./server": {
+      "import": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.mjs"
+      },
+      "require": {
+        "types": "./dist/server.d.cts",
+        "default": "./dist/server.cjs"
+      }
+    },
     "./nextjs": {
       "import": {
         "types": "./dist/nextjs.d.ts",
@@ -108,6 +118,9 @@
       ],
       "cookies": [
         "./dist/cookies.d.ts"
+      ],
+      "server": [
+        "./dist/server.d.ts"
       ]
     }
   },

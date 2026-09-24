@@ -1749,6 +1749,45 @@ class M2MClient extends BaseClient {
         });
     }
 
+    /**
+     * Token de máquina firmado (JWT) para un producto: `client_credentials` en el
+     * token endpoint OIDC estándar. La audiencia es obligatoria y el producto lo
+     * verifica con el JWKS de Access sin consultar Access por request.
+     */
+    async getMachineToken(params: { clientId: string; clientSecret: string; audience: string; scopes?: string[] }): Promise<{
+        access_token: string; token_type: "Bearer"; expires_in: number; scope: string;
+    }> {
+        if (!params.audience) throw new Error("CUSTOMY_MACHINE_TOKEN_AUDIENCE_REQUIRED");
+        return this.request("POST", "/oauth/token", {
+            grant_type: "client_credentials",
+            client_id: params.clientId,
+            client_secret: params.clientSecret,
+            audience: params.audience,
+            ...(params.scopes ? { scope: params.scopes.join(" ") } : {}),
+        });
+    }
+
+    /**
+     * Token exchange (RFC 8693): un producto cambia el token de una app que
+     * recibió por uno para otro producto, en nombre de esa app. El token
+     * resultante conserva el tenant de la app y lleva al producto en `act`.
+     */
+    async exchangeToken(params: { clientId: string; clientSecret: string; subjectToken: string; audience: string; scopes: string[] }): Promise<{
+        access_token: string; issued_token_type: string; token_type: "Bearer"; expires_in: number; scope: string;
+    }> {
+        if (!params.audience) throw new Error("CUSTOMY_MACHINE_TOKEN_AUDIENCE_REQUIRED");
+        if (!params.subjectToken) throw new Error("CUSTOMY_SUBJECT_TOKEN_REQUIRED");
+        return this.request("POST", "/oauth/token", {
+            grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+            client_id: params.clientId,
+            client_secret: params.clientSecret,
+            subject_token: params.subjectToken,
+            subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
+            audience: params.audience,
+            scope: params.scopes.join(" "),
+        });
+    }
+
     async createApiKey(envId: string, params: {
         name: string;
         scopes: string[];
@@ -1767,7 +1806,7 @@ class M2MClient extends BaseClient {
         ownerService?: string | null;
         allowedAudiences?: string[];
     }> {
-        return this.request("POST", `/api/v1/env/${envId}/api-keys`, params);
+        return this.request("POST", `/api/admin/env/${envId}/api-keys`, params);
     }
 
     async listApiKeys(envId: string): Promise<Array<{
@@ -1781,17 +1820,31 @@ class M2MClient extends BaseClient {
         allowedAudiences?: string[];
         createdAt: string;
     }>> {
-        return this.request("GET", `/api/v1/env/${envId}/api-keys`);
+        return this.request("GET", `/api/admin/env/${envId}/api-keys`);
     }
 
     async revokeApiKey(envId: string, keyId: string): Promise<{ success: true }> {
-        return this.request("DELETE", `/api/v1/env/${envId}/api-keys/${keyId}`);
+        return this.request("DELETE", `/api/admin/env/${envId}/api-keys/${keyId}`);
     }
 
-    async introspect(envId: string, token: string): Promise<{
-        active: boolean; sub?: string; scope?: string; exp?: number; iat?: number;
+    /**
+     * Introspección de un token M2M opaco heredado. `envId` se conserva por
+     * compatibilidad: el servidor resuelve el entorno a partir del token.
+     */
+    async introspect(_envId: string, token: string): Promise<{
+        active: boolean; environmentId?: string; scope?: string; exp?: number; audiences?: string[];
     }> {
-        return this.request("POST", `/api/v1/env/${envId}/token/introspect`, { token });
+        const result = await this.request<{
+            valid: boolean; environmentId?: string; scopes?: string[]; expiresAt?: string; allowedAudiences?: string[];
+        }>("POST", "/api/v1/m2m/token/introspect", { token });
+        if (!result.valid) return { active: false };
+        return {
+            active: true,
+            environmentId: result.environmentId,
+            scope: result.scopes?.join(" "),
+            exp: result.expiresAt ? Math.floor(Date.parse(result.expiresAt) / 1000) : undefined,
+            audiences: result.allowedAudiences,
+        };
     }
 }
 
