@@ -985,6 +985,16 @@ export interface AccessMeSnapshot {
     entitlements: AccessEntitlements;
     modules: CapabilityMatrixModule[];
     usage: AccessCommercialUsageSnapshot;
+    /** Solo en entornos de apps instaladas por manifiesto `app/v1`: su plan y sus capabilities. */
+    application?: AccessApplicationEntitlements;
+}
+
+export interface AccessApplicationEntitlements {
+    applicationKey: string;
+    /** `member` (asiento), `subscription` (entorno) o `default` (plan de menor rank del manifiesto). */
+    plan: { code: string; source: "member" | "subscription" | "default" } | null;
+    /** Valor de cada capability del manifiesto: boolean, límite de un meter o configuración. */
+    capabilities: Record<string, unknown>;
 }
 
 export interface CapabilityMatrixItem extends CapabilityDecision {

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+### Added
+
+- `./server`: `createMachineTokenProvider` caches an Access machine token per
+  audience until shortly before it expires and coalesces concurrent requests;
+  `discoverPlatform` reads the environment's products and audiences from
+  `/.well-known/customy-configuration`. Product SDKs accept the provider as
+  their credential, so one app identity works across the ecosystem.
+
 ## 0.4.0
 
 ### Added

@@ -141,3 +141,86 @@ export async function verifyMachineRequest(
     if (!principal) return null;
     return requiredScopes.every((scope) => principal.scopes.includes(scope)) ? principal : null;
 }
+
+/**
+ * Configuración de la plataforma para un entorno (`/.well-known/customy-configuration`):
+ * el issuer, su token endpoint y, por producto, su URL y su audiencia.
+ */
+export type CustomyPlatformConfiguration = Readonly<{
+    issuer: string;
+    tokenEndpoint: string;
+    products: Readonly<Record<string, Readonly<{ baseUrl: string; audience: string }>>>;
+}>;
+
+/** Lee el discovery del issuer. Solo https (o localhost para desarrollo). */
+export async function discoverPlatform(issuer: string, fetchImpl: typeof fetch = fetch): Promise<CustomyPlatformConfiguration> {
+    const base = normalizeIssuer(issuer);
+    const response = await fetchImpl(`${base}/.well-known/customy-configuration`, { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error(`CUSTOMY_DISCOVERY_FAILED: ${response.status}`);
+    const body = await response.json() as { issuer?: string; token_endpoint?: string; products?: Record<string, { base_url?: string; audience?: string }> };
+    if (body.issuer !== base || typeof body.token_endpoint !== "string") throw new Error("CUSTOMY_DISCOVERY_INVALID");
+    const products: Record<string, { baseUrl: string; audience: string }> = {};
+    for (const [name, product] of Object.entries(body.products ?? {})) {
+        if (typeof product?.base_url === "string" && typeof product.audience === "string") {
+            products[name] = { baseUrl: product.base_url.replace(/\/$/, ""), audience: product.audience };
+        }
+    }
+    return { issuer: base, tokenEndpoint: body.token_endpoint, products };
+}
+
+export type MachineTokenProviderOptions = Readonly<{
+    issuer: string;
+    clientId: string;
+    clientSecret: string;
+    /** Audiencia del producto, p. ej. `customy-send`. */
+    audience: string;
+    scopes?: readonly string[];
+    /** Por defecto `${issuer}/oauth/token`. */
+    tokenEndpoint?: string;
+    fetch?: typeof fetch;
+    /** Segundos antes de caducar en que se renueva (60 por defecto). */
+    refreshSkewSeconds?: number;
+    now?: () => number;
+}>;
+
+/** Devuelve un token de máquina vigente para una audiencia. */
+export type MachineTokenProvider = () => Promise<string>;
+
+/**
+ * Proveedor de tokens de máquina para llamar a un producto con la identidad
+ * de la app. Cachea el token hasta poco antes de su caducidad y agrupa las
+ * peticiones concurrentes en una sola: miles de llamadas por segundo no
+ * generan miles de peticiones a Access. Solo para servidor: usa el secreto.
+ */
+export function createMachineTokenProvider(options: MachineTokenProviderOptions): MachineTokenProvider {
+    const issuer = normalizeIssuer(options.issuer);
+    if (!nonEmptyString(options.clientId) || !nonEmptyString(options.clientSecret)) throw new Error("CUSTOMY_MACHINE_CREDENTIALS_REQUIRED");
+    if (!nonEmptyString(options.audience)) throw new Error("CUSTOMY_MACHINE_TOKEN_AUDIENCE_REQUIRED");
+    const fetchImpl = options.fetch ?? fetch;
+    const now = options.now ?? Date.now;
+    const skewMs = (options.refreshSkewSeconds ?? 60) * 1000;
+    const endpoint = options.tokenEndpoint ?? `${issuer}/oauth/token`;
+    let cached: { token: string; expiresAt: number } | null = null;
+    let pending: Promise<string> | null = null;
+
+    async function request(): Promise<string> {
+        const body = new URLSearchParams({ grant_type: "client_credentials", audience: options.audience });
+        if (options.scopes?.length) body.set("scope", options.scopes.join(" "));
+        const basic = btoa(`${encodeURIComponent(options.clientId)}:${encodeURIComponent(options.clientSecret)}`);
+        const response = await fetchImpl(endpoint, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded", authorization: `Basic ${basic}`, accept: "application/json" },
+            body: body.toString(),
+        });
+        const json = await response.json().catch(() => ({})) as { access_token?: string; expires_in?: number; error?: string };
+        if (!response.ok || !json.access_token) throw new Error(`CUSTOMY_MACHINE_TOKEN_FAILED: ${response.status} ${json.error ?? ""}`.trim());
+        cached = { token: json.access_token, expiresAt: now() + Math.max(0, Number(json.expires_in ?? 0)) * 1000 };
+        return json.access_token;
+    }
+
+    return async function machineToken(): Promise<string> {
+        if (cached && cached.expiresAt - skewMs > now()) return cached.token;
+        pending ??= request().finally(() => { pending = null; });
+        return pending;
+    };
+}

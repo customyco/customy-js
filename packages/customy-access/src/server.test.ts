@@ -1,6 +1,6 @@
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
-import { createMachineTokenVerifier, verifyMachineRequest } from "./server";
+import { createMachineTokenProvider, createMachineTokenVerifier, discoverPlatform, verifyMachineRequest } from "./server";
 
 const issuer = "https://access.fixture.invalid";
 let privateKey: CryptoKey;
@@ -93,5 +93,47 @@ describe("machine token verifier", () => {
         expect(await verifyMachineRequest(request, verify, ["data:write"])).not.toBeNull();
         expect(await verifyMachineRequest(request, verify, ["data:admin"])).toBeNull();
         expect(await verifyMachineRequest(new Request("https://data.fixture.invalid/"), verify)).toBeNull();
+    });
+});
+
+describe("machine token provider", () => {
+    it("cachea el token hasta poco antes de caducar y agrupa las peticiones concurrentes", async () => {
+        let clock = 1_000_000;
+        const calls: RequestInit[] = [];
+        const fetchMock = async (_url: RequestInfo | URL, init?: RequestInit) => {
+            calls.push(init!);
+            return Response.json({ access_token: `jwt-${calls.length}`, expires_in: 900 });
+        };
+        const token = createMachineTokenProvider({ issuer, clientId: "key_1", clientSecret: "s3cret", audience: "customy-send", scopes: ["send:emails:send"], fetch: fetchMock as typeof fetch, now: () => clock });
+        expect(await Promise.all([token(), token(), token()])).toEqual(["jwt-1", "jwt-1", "jwt-1"]);
+        expect(calls).toHaveLength(1);
+        const body = new URLSearchParams(String(calls[0].body));
+        expect(Object.fromEntries(body)).toEqual({ grant_type: "client_credentials", audience: "customy-send", scope: "send:emails:send" });
+        expect((calls[0].headers as Record<string, string>).authorization).toBe(`Basic ${btoa("key_1:s3cret")}`);
+        clock += 800_000;
+        expect(await token()).toBe("jwt-1");
+        clock += 60_000;
+        expect(await token()).toBe("jwt-2");
+    });
+
+    it("propaga el error de Access y no cachea un fallo", async () => {
+        let fail = true;
+        const fetchMock = async () => (fail ? Response.json({ error: "invalid_client" }, { status: 401 }) : Response.json({ access_token: "jwt-ok", expires_in: 900 }));
+        const token = createMachineTokenProvider({ issuer, clientId: "k", clientSecret: "s", audience: "customy-data", fetch: fetchMock as typeof fetch });
+        await expect(token()).rejects.toThrow("CUSTOMY_MACHINE_TOKEN_FAILED: 401 invalid_client");
+        fail = false;
+        expect(await token()).toBe("jwt-ok");
+        expect(() => createMachineTokenProvider({ issuer, clientId: "", clientSecret: "s", audience: "customy-data" })).toThrow("CUSTOMY_MACHINE_CREDENTIALS_REQUIRED");
+    });
+});
+
+describe("platform discovery", () => {
+    it("normaliza los productos del discovery y exige que el issuer coincida", async () => {
+        const fetchMock = async () => Response.json({ issuer, token_endpoint: `${issuer}/oauth/token`, products: { send: { base_url: "https://send.fixture.invalid/", audience: "customy-send" }, broken: { base_url: 1 } } });
+        expect(await discoverPlatform(issuer, fetchMock as typeof fetch)).toEqual({
+            issuer, tokenEndpoint: `${issuer}/oauth/token`, products: { send: { baseUrl: "https://send.fixture.invalid", audience: "customy-send" } },
+        });
+        const other = async () => Response.json({ issuer: "https://evil.fixture.invalid", token_endpoint: "x" });
+        await expect(discoverPlatform(issuer, other as typeof fetch)).rejects.toThrow("CUSTOMY_DISCOVERY_INVALID");
     });
 });
