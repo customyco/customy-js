@@ -1,6 +1,6 @@
 {
   "name": "@customyai/customy-access",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Customy Access — Official SDK for Identity & Access Management",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",

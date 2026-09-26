@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.5.0
+## 0.5.1
+
+First published release of the 0.5 line (the `0.5.0` tag points at the 0.4.0 sources and was never published).
 
 ### Added
 
@@ -9,6 +11,8 @@
   `discoverPlatform` reads the environment's products and audiences from
   `/.well-known/customy-configuration`. Product SDKs accept the provider as
   their credential, so one app identity works across the ecosystem.
+- `AccessMeSnapshot.application`: plan and capabilities of an app installed
+  from an `app/v1` manifest.
 
 ## 0.4.0
 
