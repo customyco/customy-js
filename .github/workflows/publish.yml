@@ -5,7 +5,12 @@ name: publish
 on:
   push:
     tags:
+      - "flags-eval-v[0-9]+.[0-9]+.[0-9]+"
       - "customy-access-v[0-9]+.[0-9]+.[0-9]+"
+      - "send-sdk-v[0-9]+.[0-9]+.[0-9]+"
+      - "links-sdk-v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-v[0-9]+.[0-9]+.[0-9]+"
+      - "testing-v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: read
@@ -40,6 +45,8 @@ jobs:
           actual="$(node -p "require('./$dir/package.json').version")"
           test "$actual" = "$version" || { echo "::error::el tag $version no coincide con $actual"; exit 1; }
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
+      # Las dependencias del mismo repo necesitan su dist/ para tipar y probar.
+      - run: pnpm -r build
       - run: pnpm --dir "${{ steps.target.outputs.dir }}" typecheck
       - run: pnpm --dir "${{ steps.target.outputs.dir }}" test
       - run: pnpm --dir "${{ steps.target.outputs.dir }}" build

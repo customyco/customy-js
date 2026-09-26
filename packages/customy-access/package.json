@@ -1,6 +1,6 @@
 {
   "name": "@customyai/customy-access",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "Customy Access — Official SDK for Identity & Access Management",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -80,6 +80,16 @@
         "default": "./dist/server.cjs"
       }
     },
+    "./flags": {
+      "import": {
+        "types": "./dist/flags.d.ts",
+        "default": "./dist/flags.mjs"
+      },
+      "require": {
+        "types": "./dist/flags.d.cts",
+        "default": "./dist/flags.cjs"
+      }
+    },
     "./nextjs": {
       "import": {
         "types": "./dist/nextjs.d.ts",
@@ -121,6 +131,9 @@
       ],
       "server": [
         "./dist/server.d.ts"
+      ],
+      "flags": [
+        "./dist/flags.d.ts"
       ]
     }
   },
@@ -139,7 +152,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "jose": "^5.2.2"
+    "jose": "^5.2.2",
+    "@customyai/flags-eval": "^0.1.0"
   },
   "peerDependencies": {
     "next": ">=13",

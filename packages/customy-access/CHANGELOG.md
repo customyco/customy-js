@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+- `./flags`: `CustomyFlagsClient` loads the published flag snapshot of an
+  environment (publishable key → public view; machine token with `flags:read`
+  → full view, `ETag`/304) and evaluates locally with `@customyai/flags-eval`.
+  `subscribe({ realtimeUrl })` applies new versions (including the kill
+  switch) as soon as they are published, reconnecting on its own;
+  `startPolling()` is the fallback. Impressions are deduplicated per flag, key,
+  treatment and hour before they are sent.
+
+## 0.5.1
+
+Never published: the `0.5.0` tag points at the 0.4.0 sources. These changes ship in 0.6.0.
+
+### Added
+
+- `./server`: `createMachineTokenProvider` caches an Access machine token per
+  audience until shortly before it expires and coalesces concurrent requests;
+  `discoverPlatform` reads the environment's products and audiences from
+  `/.well-known/customy-configuration`. Product SDKs accept the provider as
+  their credential, so one app identity works across the ecosystem.
+- `AccessMeSnapshot.application`: plan and capabilities of an app installed
+  from an `app/v1` manifest.
+
 ## 0.4.0
 
 ### Added
