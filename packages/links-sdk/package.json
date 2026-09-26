@@ -1,0 +1,62 @@
+{
+  "name": "@customyai/links-sdk",
+  "version": "0.2.0",
+  "description": "TypeScript SDK for the Customy Links API (short links, analytics, conversions, webhooks). Zero dependencies; works in Node 18+, Bun, Deno, Workers and browsers.",
+  "license": "MIT",
+  "author": "Customy <hello@customy.ai>",
+  "homepage": "https://links.customy.ai/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/customyco/customy-js.git",
+    "directory": "packages/links-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/customyco/customy-js/issues"
+  },
+  "keywords": [
+    "customy",
+    "links",
+    "short-links",
+    "url-shortener",
+    "analytics",
+    "conversions",
+    "sdk"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.11",
+    "tsup": "^8.0.0",
+    "@types/node": "^20.14.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

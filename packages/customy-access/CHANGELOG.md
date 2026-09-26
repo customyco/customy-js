@@ -1,8 +1,20 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+- `./flags`: `CustomyFlagsClient` loads the published flag snapshot of an
+  environment (publishable key → public view; machine token with `flags:read`
+  → full view, `ETag`/304) and evaluates locally with `@customyai/flags-eval`.
+  `subscribe({ realtimeUrl })` applies new versions (including the kill
+  switch) as soon as they are published, reconnecting on its own;
+  `startPolling()` is the fallback. Impressions are deduplicated per flag, key,
+  treatment and hour before they are sent.
+
 ## 0.5.1
 
-First published release of the 0.5 line (the `0.5.0` tag points at the 0.4.0 sources and was never published).
+Never published: the `0.5.0` tag points at the 0.4.0 sources. These changes ship in 0.6.0.
 
 ### Added
 
