@@ -106,7 +106,7 @@ function buildAccess<Capability extends string>(options: AccessOptions) {
             },
         },
 
-        /** Catálogo comercial del entorno (credencial de administración del entorno). */
+        /** Catálogo comercial del propio entorno (scope `catalog:read`; `admin:*` además ve el maestro global). */
         catalog: {
             get: (params: Scope = {}) => get<AccessCatalog>(admin(params.environmentId, "/catalog")),
             features: (params: Scope = {}) => get<{ items: CatalogFeature[] }>(admin(params.environmentId, "/catalog/features")).then((r) => r.items),
@@ -117,7 +117,7 @@ function buildAccess<Capability extends string>(options: AccessOptions) {
         },
 
         users: {
-            /** Una página de usuarios del entorno (credencial de administración del entorno). */
+            /** Una página de usuarios del entorno (scope `users:read`). */
             list: listUsers,
             /** Todos los usuarios, página a página. */
             iterate: (params: Scope & { search?: string; limit?: number } = {}, iteration: { signal?: AbortSignal; maxPages?: number } = {}) => {

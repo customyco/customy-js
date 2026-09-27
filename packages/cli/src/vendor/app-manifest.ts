@@ -84,13 +84,19 @@ export type AppManifest = z.infer<typeof AppManifestSchema>;
 
 /**
  * Scopes de Access que una app puede declarar para `customy-access`. Lista
- * blanca cerrada: Access no expone su prefijo (`access:`) a las apps, solo
- * estas dos lecturas acotadas a los usuarios del entorno de la propia app —
- * el plan (`GET /api/v1/me`) y el contacto en el momento de enviar
- * (`GET /api/v1/users/:userId/contact`). Cualquier otro scope es
+ * blanca cerrada de LECTURAS acotadas al entorno de la propia app: Access no
+ * expone su prefijo (`access:`) a las apps.
+ *  - `capabilities:read`: el plan de sus usuarios (`GET /api/v1/me`).
+ *  - `users:contact:read`: el contacto de UN usuario al enviarle
+ *    (`GET /api/v1/users/:userId/contact`).
+ *  - `users:read`: lista y detalle de sus usuarios y miembros (solo GET).
+ *  - `flags:read`: la instantánea completa de flags del entorno (runtime).
+ *  - `catalog:read` (2026-09-27): el catálogo comercial de su entorno —nunca el
+ *    maestro global de Customy— (`GET …/catalog` y `…/catalog/:entity`).
+ * Cualquier otro scope (`admin:*`, `*`, escrituras, comodines) es
  * `SCOPE_OUTSIDE_PRODUCT`: una app nunca obtiene administración de Access.
  */
-export const APP_ACCESS_SCOPES = ["capabilities:read", "users:contact:read"] as const;
+export const APP_ACCESS_SCOPES = ["capabilities:read", "users:contact:read", "users:read", "flags:read", "catalog:read"] as const;
 export type AppAccessScope = (typeof APP_ACCESS_SCOPES)[number];
 const APP_ACCESS_SCOPE_SET: ReadonlySet<string> = new Set(APP_ACCESS_SCOPES);
 

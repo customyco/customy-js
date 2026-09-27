@@ -105,7 +105,7 @@ importers:
   packages/customy-access:
     dependencies:
       '@customyai/access':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: link:../access
       '@customyai/client':
         specifier: ^0.1.1
@@ -151,13 +151,13 @@ importers:
   packages/customy-sdk:
     dependencies:
       '@customyai/customy-access':
-        specifier: ^0.8.1
+        specifier: ^0.8.2
         version: link:../customy-access
       '@customyai/links-sdk':
         specifier: ^0.3.0
         version: link:../links-sdk
       '@customyai/sdk':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: link:../sdk
       '@customyai/send-sdk':
         specifier: ^1.3.0
@@ -245,7 +245,7 @@ importers:
   packages/sdk:
     dependencies:
       '@customyai/access':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: link:../access
       '@customyai/billing':
         specifier: ^0.1.0
@@ -349,7 +349,7 @@ importers:
         version: 8.20.0
     devDependencies:
       '@customyai/customy-sdk':
-        specifier: ^0.3.1
+        specifier: ^0.3.2
         version: link:../customy-sdk
       '@types/node':
         specifier: ^20.14.2

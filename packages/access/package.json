@@ -1,6 +1,6 @@
 {
   "name": "@customyai/access",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Customy Access: capabilities, catalog, users and user contact, flags and the generated client for every public Access operation, over @customyai/core.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
