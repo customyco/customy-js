@@ -1,5 +1,7 @@
 # @customyai/customy-access
 
+> **Deprecated.** Use the new platform packages: [`@customyai/client`](../sdk-client) (browser session, `./react`, `./native`), [`@customyai/web`](../sdk-web) (same-origin handlers for Next.js or any framework, cookies, edge verification), [`@customyai/server`](../sdk-server) (token verification) and [`@customyai/access`](../sdk-access) (flags, catalog). Every subpath of this package is now an adapter of those packages with the same 0.x API, kept for one major cycle; it warns once per process. The admin client `CustomyAccess` and `./generated` have no equivalent yet and stay here, frozen. `./cookies` can no longer be bundled for the browser.
+
 Official SDK for **Customy Access** — Identity & Access Management.
 
 One package, three entry points:

@@ -1,0 +1,109 @@
+{
+  "name": "@customyai/send",
+  "version": "0.1.0",
+  "description": "Customy Send: email, templates, domains, webhooks, suppressions, notifications, push and in-app messages for servers, over @customyai/core (typed errors, retries with Retry-After, idempotency, Access machine tokens); ./inbox and ./inbox/react for end-user apps with a subscriber token.",
+  "license": "MIT",
+  "author": "Customy <hello@customy.ai>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/customyco/customy-js.git",
+    "directory": "packages/send"
+  },
+  "bugs": {
+    "url": "https://github.com/customyco/customy-js/issues"
+  },
+  "keywords": [
+    "customy",
+    "sdk",
+    "email",
+    "notifications",
+    "push",
+    "inbox",
+    "in-app",
+    "react",
+    "react-native"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./inbox": {
+      "import": {
+        "types": "./dist/inbox.d.ts",
+        "default": "./dist/inbox.mjs"
+      },
+      "require": {
+        "types": "./dist/inbox.d.cts",
+        "default": "./dist/inbox.cjs"
+      }
+    },
+    "./inbox/react": {
+      "import": {
+        "types": "./dist/inbox/react.d.ts",
+        "default": "./dist/inbox/react.mjs"
+      },
+      "require": {
+        "types": "./dist/inbox/react.d.cts",
+        "default": "./dist/inbox/react.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "inbox": [
+        "./dist/inbox.d.ts"
+      ],
+      "inbox/react": [
+        "./dist/inbox/react.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@customyai/core": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.11",
+    "tsup": "^8.0.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.2.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

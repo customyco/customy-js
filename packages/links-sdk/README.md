@@ -1,9 +1,10 @@
 # @customyai/links-sdk
 
+> **Deprecated.** Use [`@customyai/links`](../sdk-links): `createLinks({ accessToken })`. This package stays for one major cycle as an adapter of that client with the same 0.x API (`CustomyLinks`, `CustomyLinksError`, `verifyWebhook`, `shortUrlOf`). It warns once per process and now depends on `@customyai/core` and `@customyai/links`.
+
 TypeScript SDK for the [Customy Links](https://links.customy.ai/docs) API:
-short links, custom domains, analytics, conversions and webhooks. Zero
-dependencies — only `fetch` — so it runs in Node 18+, Bun, Deno, Cloudflare
-Workers and the browser.
+short links, custom domains, analytics, conversions and webhooks. Only
+`fetch`, so it runs in Node 18+, Bun, Deno, Cloudflare Workers and the browser.
 
 ```bash
 npm install @customyai/links-sdk

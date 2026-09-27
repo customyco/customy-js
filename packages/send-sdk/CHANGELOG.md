@@ -1,0 +1,23 @@
+# Changelog
+
+## 1.3.0
+
+### Minor Changes
+
+- En desuso: usa `@customyai/send` (`createSend`) y `@customyai/send/inbox`. `CustomySend` y `createInboxClient` son ahora adaptadores de esos clientes (transporte, reintentos con `Retry-After`, tokens de Access y tiempo real de `@customyai/send`) y avisan una vez por proceso (`DeprecationWarning` `CUSTOMY_SDK_DEPRECATED`; `console.warn` fuera de Node). La API pública no cambia (informes de API idénticos): `CustomySendError` conserva su constructor posicional, sus códigos (`network_error`, `http_<estado>`, los de la API) y `retryAfterMs: null` sin `Retry-After`; `request` y `requestBinary` siguen. Cambio de comportamiento: un `POST` sin `idempotencyKey` lleva ahora una llave generada y se reintenta ante un 5xx sin riesgo de duplicar; un 429 se reintenta con cualquier nombre de error (antes solo `rate_limit_exceeded`).
+- Push de primer nivel (P0): `notifications.send` acepta `subtitle`, `sound` (o `null` = silencio), `thread_id`, `interruption_level`, `relevance_score`, `actions` (≤ 3 botones), `media`, `android` (canal, visibilidad, color, fijo), `type: "background"` (push silencioso), `replace`, `send_at` y `delivery` (zona de cada persona, horas de silencio). Nuevos `notifications.cancel` (con `recall`), `notifications.categories`, `notifications.settings` y `subscribers` (perfil y preferencias). En `/inbox`: `preferences.get/set` y `opened(id, { action })`. `actionCategoryId` da la categoría de iOS de un juego de botones, igual que Send. Todo es opcional: nada existente cambia.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.1.0
+  - @customyai/send@0.1.0
+
+## 1.2.0
+
+Customy Engage: notificaciones push, bandeja in-app y mensajes in-app.
+
+- Servidor: `notifications.send(input, { idempotencyKey })`, `notifications.get`, `notifications.stats`, `notifications.conversion`; `push.devices.register/list/remove`; `push.credentials.putFcm/putApns/list/remove`; `inbox.list/mark/createToken`; `inApp.create/list/get/update/archive`. Misma autenticación que el resto (llave o token de máquina de Customy Access).
+- Nuevo `@customyai/send-sdk/inbox`: cliente para las apps (navegador, React Native) con token de suscriptor renovable; lista paginada, contadores, marcas optimistas con marcha atrás, recibos en lote con ids estables, mensajes in-app por disparador y prioridad, registro del dispositivo push y cambios en vivo por WebSocket (reconexión con ticket nuevo, señales atrasadas ignoradas, sondeo de contadores como respaldo).
+- Nuevo `@customyai/send-sdk/inbox/react`: `InboxProvider`, `useInbox`, `useInboxCounts`, `useInAppMessages` y `formatBadgeCount`, sin DOM.
+- `CustomySendError` se exporta también desde `@customyai/send-sdk/inbox`.

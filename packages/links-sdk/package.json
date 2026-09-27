@@ -1,7 +1,7 @@
 {
   "name": "@customyai/links-sdk",
-  "version": "0.2.0",
-  "description": "TypeScript SDK for the Customy Links API (short links, analytics, conversions, webhooks). Zero dependencies; works in Node 18+, Bun, Deno, Workers and browsers.",
+  "version": "0.3.0",
+  "description": "Deprecated: use @customyai/links. Adapter of the Customy Links client (short links, analytics, conversions, webhooks) kept for one major cycle.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
   "homepage": "https://links.customy.ai/docs",
@@ -42,12 +42,17 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "rm -rf dist && tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@customyai/core": "^0.1.0",
+    "@customyai/links": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",

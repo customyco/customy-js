@@ -5,11 +5,22 @@ Official JavaScript and TypeScript SDKs for the Customy platform.
 | Package | Description |
 |---|---|
 | [`@customyai/flags-eval`](./packages/flags-eval) | Pure local feature flag evaluation engine for Customy FME. |
-| [`@customyai/customy-access`](./packages/customy-access) | Customy Access — Official SDK for Identity & Access Management |
-| [`@customyai/send-sdk`](./packages/send-sdk) | Cliente TypeScript de Customy Send: correo transaccional y masivo por API (compatible con la forma de Resend) |
-| [`@customyai/links-sdk`](./packages/links-sdk) | TypeScript SDK for the Customy Links API (short links, analytics, conversions, webhooks). Zero dependencies; works in Node 18+, Bun, Deno, Workers and browsers. |
-| [`@customyai/customy-sdk`](./packages/sdk) | TypeScript umbrella SDK for all Customy products and platform services |
+| [`@customyai/customy-access`](./packages/customy-access) | Deprecated: use @customyai/client, @customyai/web, @customyai/server and @customyai/access. Adapter of the Customy Access SDK kept for one major cycle (the admin client CustomyAccess stays here, frozen). |
+| [`@customyai/send-sdk`](./packages/send-sdk) | Deprecated: use @customyai/send. Adapter of the Customy Send client (email API and Customy Engage: push, in-app inbox and in-app messages) kept for one major cycle. |
+| [`@customyai/links-sdk`](./packages/links-sdk) | Deprecated: use @customyai/links. Adapter of the Customy Links client (short links, analytics, conversions, webhooks) kept for one major cycle. |
+| [`@customyai/customy-sdk`](./packages/customy-sdk) | Deprecated: use @customyai/sdk. Adapter of the Customy umbrella SDK (createCustomy, portfolio clients) kept for one major cycle. |
 | [`@customyai/testing`](./packages/testing) | In-memory fake of the Customy platform for testing apps: discovery, machine tokens, Send, Billing and Data, checked against the app's customy.app.json |
+| [`@customyai/core`](./packages/core) | Customy SDK core: fetch transport, typed errors, retries with Retry-After, idempotency, pagination, platform discovery and machine tokens. Runs on Node, edge runtimes and browsers. |
+| [`@customyai/server`](./packages/server) | Customy identity verification for any server: JWKS with rotation, machine and user token verifiers, BFF actor assertions and request verification over the standard Request, with a Node IncomingMessage adapter. Server only. |
+| [`@customyai/web`](./packages/web) | Customy same-origin session handlers over the standard Request and Response: auth proxy, social sign-in, sign-out, impersonation callback, server session, route protection, cookie names and local session token verification. Node and edge; never in a browser bundle. |
+| [`@customyai/client`](./packages/client) | Customy browser client: session, sign-in, MFA, passkeys, active organization, capabilities and account linking over same-origin HttpOnly cookies, with React, native and native React bindings as subpaths. Never takes server secrets. |
+| [`@customyai/access`](./packages/access) | Customy Access: capabilities, catalog, users and user contact, flags and the generated client for every public Access operation, over @customyai/core. |
+| [`@customyai/data`](./packages/data) | Customy Data: typed event tracking (track, identify, page, screen, group, alias) with batching; the scope comes from the credential, never from headers. Over @customyai/core. |
+| [`@customyai/send`](./packages/send) | Customy Send: email, templates, domains, webhooks, suppressions, notifications, push and in-app messages for servers, over @customyai/core (typed errors, retries with Retry-After, idempotency, Access machine tokens); ./inbox and ./inbox/react for end-user apps with a subscriber token. |
+| [`@customyai/billing`](./packages/billing) | Customy Billing for apps: report usage of the meters an app declares, with its Access identity, over @customyai/core. |
+| [`@customyai/links`](./packages/links) | Customy Links: short links, analytics, conversions, domains and webhooks, over @customyai/core (typed errors, retries with Retry-After, pagination, Access machine tokens). |
+| [`@customyai/sdk`](./packages/sdk) | The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing and Links (plus any discovered product) from their own packages. Server only. |
+| [`@customyai/cli`](./packages/cli) | Customy CLI for apps: validate, type and sync customy.app.json (customy apps validate | codegen | sync). Also usable as a library. |
 
 ## Security
 

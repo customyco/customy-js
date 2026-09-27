@@ -12,12 +12,12 @@ describe("CustomyFlagsClient", () => {
     it("modo optimizado: una impresión por flag, clave y tratamiento; en debug, todas", async () => {
         const bodies: Array<{ impressions: unknown[] }> = [];
         const fetch = vi.fn(async (_url: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return new Response("{}", { status: 202 }); }) as unknown as typeof globalThis.fetch;
-        const client = new CustomyFlagsClient({ baseUrl: "https://access.invalid", fetch, snapshot: snapshot(1) });
+        const client = new CustomyFlagsClient({ baseUrl: "https://access.invalid", publishableKey: "pk_fixture", fetch, snapshot: snapshot(1) });
         for (let i = 0; i < 5; i += 1) client.getTreatment("checkout", { key: "u1" });
         client.getTreatment("checkout", { key: "u2" });
         client.getTreatment("missing", { key: "u1" });
         expect(await client.flush()).toBe(2);
-        const debug = new CustomyFlagsClient({ baseUrl: "https://access.invalid", fetch, snapshot: snapshot(1), impressionsMode: "debug" });
+        const debug = new CustomyFlagsClient({ baseUrl: "https://access.invalid", publishableKey: "pk_fixture", fetch, snapshot: snapshot(1), impressionsMode: "debug" });
         for (let i = 0; i < 3; i += 1) debug.getTreatment("checkout", { key: "u1" });
         expect(await debug.flush()).toBe(3);
     });
@@ -29,16 +29,17 @@ describe("CustomyFlagsClient", () => {
             posts.push({ url, body: JSON.parse(String(init?.body)) });
             return new Response("{}", { status });
         }) as unknown as typeof globalThis.fetch;
-        const client = new CustomyFlagsClient({ baseUrl: "https://access.invalid", fetch, snapshot: snapshot(1, "on") });
+        const client = new CustomyFlagsClient({ baseUrl: "https://access.invalid", publishableKey: "pk_fixture", fetch, snapshot: snapshot(1, "on") });
         expect(client.trackConversion("checkout", { key: "u1" }, { value: 20, metric: "purchase" })).toBe(true);
         expect(client.trackConversion("missing", { key: "u1" })).toBe(false);
-        await expect(client.flush()).rejects.toThrow("conversions flush failed: 503");
+        await expect(client.flush()).rejects.toMatchObject({ code: "HTTP_503", status: 503 });
         status = 202;
         expect(await client.flush()).toBe(1);
         const sent = posts.filter((post) => post.url.endsWith("/api/v1/flags/conversions"));
-        expect(sent).toHaveLength(2);
-        expect(sent[1]!.body.conversions![0]).toMatchObject({ flagKey: "checkout", contextKey: "u1", treatment: "on", metric: "purchase", value: 20 });
-        expect(sent[1]!.body.conversions![0]!.id).toBe(sent[0]!.body.conversions![0]!.id);
+        // Tres intentos del flush fallido (el transporte reintenta el 503) y uno bueno.
+        expect(sent).toHaveLength(4);
+        expect(sent[3]!.body.conversions![0]).toMatchObject({ flagKey: "checkout", contextKey: "u1", treatment: "on", metric: "purchase", value: 20 });
+        expect(sent[3]!.body.conversions![0]!.id).toBe(sent[0]!.body.conversions![0]!.id);
         expect(posts.some((post) => post.url.endsWith("/impressions"))).toBe(false);
         expect(() => client.trackConversion("checkout", { key: "u1" }, { value: -1 })).toThrow();
     });
@@ -61,7 +62,7 @@ describe("CustomyFlagsClient", () => {
         const fetch = vi.fn(async (url: string) => url.endsWith("/oauth/jwks.json")
             ? Response.json({ keys: [jwk] })
             : new Response(JSON.stringify(served), { status: 200, headers: { etag: served.etag! } })) as unknown as typeof globalThis.fetch;
-        const client = new CustomyFlagsClient({ baseUrl: "https://access.invalid", fetch, verifySignature: true });
+        const client = new CustomyFlagsClient({ baseUrl: "https://access.invalid", publishableKey: "pk_fixture", fetch, verifySignature: true });
         expect((await client.refresh()).version).toBe(1);
 
         const signedV2 = snapshot(2, "on");
@@ -72,9 +73,9 @@ describe("CustomyFlagsClient", () => {
         served = { ...signedV2, signature: sign(signedV2) };
         expect((await client.refresh()).version).toBe(2);
 
-        const strict = new CustomyFlagsClient({ baseUrl: "https://access.invalid", fetch, verifySignature: true });
+        const strict = new CustomyFlagsClient({ baseUrl: "https://access.invalid", publishableKey: "pk_fixture", fetch, verifySignature: true });
         served = { ...signedV2, signature: undefined };
-        await expect(strict.refresh()).rejects.toThrow("signature invalid");
+        await expect(strict.refresh()).rejects.toMatchObject({ code: "SDK_FLAGS_SIGNATURE_INVALID" });
     });
 
     it("cdn: latest para sondear, la versión anunciada por su URL inmutable, sin cabeceras propias y sin retroceder", async () => {
@@ -133,5 +134,20 @@ describe("CustomyFlagsClient", () => {
         stop();
         expect(sockets[1]!.closed).toBe(true);
         vi.useRealTimers();
+    });
+
+    it("adaptador: bearerToken como token de Access, cabeceras de ámbito y rutas propias de 0.x", async () => {
+        const calls: Array<{ url: string; headers: Headers }> = [];
+        const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+            calls.push({ url, headers: new Headers(init?.headers) });
+            return new Response(JSON.stringify(snapshot(3)), { status: 200, headers: { etag: "\"v3\"" } });
+        }) as unknown as typeof globalThis.fetch;
+        const client = new CustomyFlagsClient({ baseUrl: "https://access.invalid", bearerToken: "jwt-fixture", organizationId: "org_1", environmentId: "env_1", snapshotPath: "/custom/snapshot", fetch });
+        expect((await client.refresh()).version).toBe(3);
+        expect(calls[0]!.url).toBe("https://access.invalid/custom/snapshot");
+        expect(calls[0]!.headers.get("authorization")).toBe("Bearer jwt-fixture");
+        expect(calls[0]!.headers.get("x-org-id")).toBe("org_1");
+        expect(calls[0]!.headers.get("x-env-id")).toBe("env_1");
+        expect(() => new CustomyFlagsClient({ baseUrl: "https://access.invalid", fetch })).toThrow("publishableKey");
     });
 });

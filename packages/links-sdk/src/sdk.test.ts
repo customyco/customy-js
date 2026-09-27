@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CustomyLinks, CustomyLinksError, shortUrlOf } from "./client";
-import { signPayload, verifyWebhook, WebhookVerificationError } from "./webhooks";
+import { signPayload, verifyWebhook, WebhookVerificationError } from "./index";
 
 function fakeFetch(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
   return vi.fn(async (input: string | URL | Request, init?: RequestInit) => handler(String(input), init ?? {}));
@@ -105,5 +105,17 @@ describe("verifyWebhook", () => {
     await expect(verifyWebhook(body, { "webhook-id": "msg_3", "webhook-timestamp": String(ts), "webhook-signature": "v1,AAAA" }, secret)).rejects.toThrow(/mismatch/);
     await expect(verifyWebhook(body, { "webhook-id": "msg_3", "webhook-timestamp": String(ts - 3600), "webhook-signature": sig }, secret)).rejects.toThrow(/tolerance/);
     await expect(verifyWebhook(body, {}, secret)).rejects.toThrow(/missing/);
+  });
+});
+
+describe("deprecación", () => {
+  it("avisa una sola vez por proceso aunque se creen varios clientes", () => {
+    (globalThis as { [key: symbol]: Set<string> | undefined })[Symbol.for("customy.sdk.deprecations")]?.clear();
+    const warn = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
+    new CustomyLinks({ apiKey: "cl_live_x" });
+    new CustomyLinks({ apiKey: "cl_live_y" });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![0])).toContain("@customyai/links-sdk is deprecated");
+    warn.mockRestore();
   });
 });

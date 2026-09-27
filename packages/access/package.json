@@ -1,0 +1,96 @@
+{
+  "name": "@customyai/access",
+  "version": "0.1.0",
+  "description": "Customy Access: capabilities, catalog, users and user contact, flags and the generated client for every public Access operation, over @customyai/core.",
+  "license": "MIT",
+  "author": "Customy <hello@customy.ai>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/customyco/customy-js.git",
+    "directory": "packages/access"
+  },
+  "bugs": {
+    "url": "https://github.com/customyco/customy-js/issues"
+  },
+  "keywords": [
+    "customy",
+    "sdk",
+    "access",
+    "capabilities",
+    "feature-flags"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./flags": {
+      "import": {
+        "types": "./dist/flags.d.ts",
+        "default": "./dist/flags.mjs"
+      },
+      "require": {
+        "types": "./dist/flags.d.cts",
+        "default": "./dist/flags.cjs"
+      }
+    },
+    "./generated": {
+      "import": {
+        "types": "./dist/generated.d.ts",
+        "default": "./dist/generated.mjs"
+      },
+      "require": {
+        "types": "./dist/generated.d.cts",
+        "default": "./dist/generated.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "flags": [
+        "./dist/flags.d.ts"
+      ],
+      "generated": [
+        "./dist/generated.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@customyai/core": "^0.1.0",
+    "@customyai/flags-eval": "^0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.11",
+    "tsup": "^8.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.8.0
+
+### Minor Changes
+
+- En desuso: usa los paquetes nuevos de la plataforma. Cada subpath es ahora un adaptador y avisa una vez por proceso (`DeprecationWarning` `CUSTOMY_SDK_DEPRECATED`; `console.warn` fuera de Node):
+
+  - `./react` reexporta `@customyai/client/react`; `CustomyProvider` (con `adminSecret`) y `useSDK()` siguen dando el cliente de administración `CustomyAccess`.
+  - `./native` y `./native/react` reexportan `@customyai/client/native` (misma API).
+  - `./nextjs` resuelve la configuración como en 0.x (URL de Access, origen público y ámbito desde las variables de entorno), llama a los handlers de `@customyai/web` y devuelve `NextResponse`.
+  - `./server` usa `@customyai/server` (verificación) y `@customyai/core` (tokens de máquina y discovery) con los mensajes `CUSTOMY_*` de siempre.
+  - `./edge` y `./cookies` son los de `@customyai/web` (`./cookies` ya no entra en un bundle de navegador).
+  - `./flags` delega en `@customyai/access/flags`, con `bearerToken`, cabeceras de ámbito y rutas propias de 0.x.
+  - La raíz reexporta los tipos y ayudantes de capacidades de `@customyai/client`; `CustomyAccess`, `createAccessClient` y `./generated` no tienen equivalente y quedan congelados.
+
+  Los cambios que marca el informe de API no rompen: `SocialSignInOptions` pasa a ser alias de `ScopedAuthOptions` (mismos campos), `fetchRealtimeTicket` gana un parámetro opcional, `SignInResult` un campo opcional, y `CustomyFlagsClient` solo cambia miembros privados.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.1.0
+  - @customyai/client@0.1.0
+  - @customyai/core@0.1.0
+  - @customyai/server@0.1.0
+  - @customyai/web@0.1.0
+
+## 0.7.1
+
+### Fixed
+
+- The published package now exposes `./native` and `./native/react` (0.7.0 shipped their
+  sources but not the entry points).
+
 ## 0.7.0
 
 ### Added
