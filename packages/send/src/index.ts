@@ -20,9 +20,11 @@
  */
 export {
   createSend,
+  SEND_API_VERSION,
   SEND_AUDIENCE,
   SEND_DEFAULT_BASE_URL,
   SEND_SCOPES,
+  type ActorOptions,
   type Attachment,
   type CustomySend,
   type IdempotentOptions,

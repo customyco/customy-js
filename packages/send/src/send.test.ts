@@ -1,6 +1,6 @@
 import { createMachineTokens, CustomySdkError } from "@customyai/core";
 import { describe, expect, it } from "vitest";
-import { actionCategoryId, createSend, CustomySendError, verifyWebhook } from "./index";
+import { actionCategoryId, createSend, CustomySendError, SEND_API_VERSION, SEND_SCOPES, verifyWebhook } from "./index";
 import { CustomySendError as InboxSendError } from "./inbox/index";
 
 type Call = { url: string; method: string; headers: Record<string, string>; body?: string };
@@ -131,6 +131,124 @@ describe("@customyai/send", () => {
       "PUT /api/subscribers/u%201/preferences",
     ]);
     expect(JSON.parse(calls[0]!.body!)).toEqual({ recall: true });
+  });
+
+  it("manda Customy-Version en cada petición (una cabecera propia la sustituye)", async () => {
+    const { fetch, calls } = scripted([json(200, { data: [] }), json(200, { data: [] })]);
+    const send = createSend({ baseUrl: BASE, accessToken: "cs_test_x", fetch });
+    await send.inApp.list();
+    expect(SEND_API_VERSION).toBe("2026-09-27");
+    expect(calls[0]!.headers["customy-version"]).toBe("2026-09-27");
+    const pinned = createSend({ baseUrl: BASE, accessToken: "cs_test_x", fetch, headers: { "Customy-Version": "2026-10-01" } });
+    await pinned.inApp.list();
+    expect(calls[1]!.headers["customy-version"]).toBe("2026-10-01");
+    expect(SEND_SCOPES).toEqual(expect.arrayContaining(["send:content_cards:read", "send:content_cards:manage", "send:in_app:manage"]));
+  });
+
+  it("in-app v2: aprobación, prueba, estadísticas, plantillas, kits de marca, tarjetas y vista previa", async () => {
+    const replies = Array.from({ length: 35 }, () => (call: Call) => json(200, { object: "ok", echo: call.url }));
+    const { fetch, calls } = scripted(replies);
+    const send = createSend({ baseUrl: BASE, accessToken: "cs_test_x", fetch });
+    await send.inApp.create({ name: "Primer", layout: "slideup", content: { blocks: [{ type: "heading", text: "Hola {{ first_name }}" }, { type: "survey", id: "nps", question: "¿Nos recomiendas?", kind: "rating", scale: 10 }] }, audience: { filters: [{ field: "attributes.plan", op: "eq", value: "pro" }] }, trigger_filters: [{ property: "total", op: "gte", value: 50 }], delay_seconds: 3, variants: [{ id: "a", weight: 50, content: { title: "A" } }], control_pct: 10, conversion: { event: "purchase", window_hours: 48 } }, { actor: "usr_ana", idempotencyKey: "iam-1" });
+    await send.inApp.update("iam_1", { priority: 3 }, { actor: "usr_ana" });
+    await send.inApp.submit("iam_1", { actor: "usr_ana" });
+    await send.inApp.approve("iam_1", { actor: "usr_bea" });
+    await send.inApp.reject("iam_1", "copy", { actor: "usr_bea" });
+    await send.inApp.activate("iam_1");
+    await send.inApp.pause("iam_1");
+    await send.inApp.test("iam_1", { subscriber: "user_1", variant_id: "a" });
+    await send.inApp.stats("iam_1");
+    await send.inApp.templates.list();
+    await send.inApp.templates.get("tpl_welcome");
+    await send.inApp.templates.create({ name: "Mía", layout: "modal", content: { title: "x" }, tags: ["promo"] });
+    await send.inApp.templates.update("tpl_1", { name: "Otra" });
+    await send.inApp.templates.remove("tpl_1");
+    await send.brandKits.list();
+    await send.brandKits.get("bk_1");
+    await send.brandKits.create({ name: "Bonu", colors: { background: "#ffffff", text: "#111111", accent: "#00aa55", muted: "#888888" }, radius: 12, default: true });
+    await send.brandKits.update("bk_1", { radius: 8 });
+    await send.brandKits.remove("bk_1");
+    await send.contentCards.create({ name: "Promo", kind: "captioned", title: "2x1", pinned: true }, { actor: "usr_ana" });
+    await send.contentCards.list({ status: "in_review", limit: 5 });
+    await send.contentCards.get("cc_1");
+    await send.contentCards.update("cc_1", { title: "3x2" });
+    await send.contentCards.remove("cc_1");
+    await send.contentCards.submit("cc_1");
+    await send.contentCards.approve("cc_1", { actor: "usr_bea" });
+    await send.contentCards.reject("cc_1");
+    await send.contentCards.activate("cc_1");
+    await send.contentCards.pause("cc_1");
+    await send.contentCards.test("cc_1", { subscriber: "user_1" });
+    await send.contentCards.stats("cc_1");
+    await send.templates.preview({ text: "Hola {{ first_name | default: \"amiga\" }}", subscriber: "user_1", locale: "es" });
+    await send.subscribers.put("user_1", { attributes: { first_name: "Ana", plan: null } });
+    await send.inApp.approvals("iam_1");
+    await send.contentCards.approvals("cc_1");
+    expect(calls.map((call) => `${call.method} ${new URL(call.url).pathname}${new URL(call.url).search}`)).toEqual([
+      "POST /api/in-app/messages",
+      "PATCH /api/in-app/messages/iam_1",
+      "POST /api/in-app/messages/iam_1/submit",
+      "POST /api/in-app/messages/iam_1/approve",
+      "POST /api/in-app/messages/iam_1/reject",
+      "POST /api/in-app/messages/iam_1/activate",
+      "POST /api/in-app/messages/iam_1/pause",
+      "POST /api/in-app/messages/iam_1/test",
+      "GET /api/in-app/messages/iam_1/stats",
+      "GET /api/in-app/templates",
+      "GET /api/in-app/templates/tpl_welcome",
+      "POST /api/in-app/templates",
+      "PATCH /api/in-app/templates/tpl_1",
+      "DELETE /api/in-app/templates/tpl_1",
+      "GET /api/brand-kits",
+      "GET /api/brand-kits/bk_1",
+      "POST /api/brand-kits",
+      "PATCH /api/brand-kits/bk_1",
+      "DELETE /api/brand-kits/bk_1",
+      "POST /api/content-cards",
+      "GET /api/content-cards?status=in_review&limit=5",
+      "GET /api/content-cards/cc_1",
+      "PATCH /api/content-cards/cc_1",
+      "DELETE /api/content-cards/cc_1",
+      "POST /api/content-cards/cc_1/submit",
+      "POST /api/content-cards/cc_1/approve",
+      "POST /api/content-cards/cc_1/reject",
+      "POST /api/content-cards/cc_1/activate",
+      "POST /api/content-cards/cc_1/pause",
+      "POST /api/content-cards/cc_1/test",
+      "GET /api/content-cards/cc_1/stats",
+      "POST /api/templates/preview",
+      "PUT /api/subscribers/user_1",
+      "GET /api/in-app/messages/iam_1/approvals",
+      "GET /api/content-cards/cc_1/approvals",
+    ]);
+    const actor = (i: number) => calls[i]!.headers["x-customy-actor"];
+    expect([actor(0), actor(1), actor(2), actor(3), actor(4), actor(5)]).toEqual(["usr_ana", "usr_ana", "usr_ana", "usr_bea", "usr_bea", undefined]);
+    expect(calls[0]!.headers["idempotency-key"]).toBe("iam-1");
+    expect(calls[19]!.headers["idempotency-key"]).toBeTruthy();
+    expect(JSON.parse(calls[0]!.body!)).toMatchObject({ layout: "slideup", delay_seconds: 3, control_pct: 10, trigger_filters: [{ property: "total", op: "gte", value: 50 }] });
+    expect(JSON.parse(calls[4]!.body!)).toEqual({ reason: "copy" });
+    expect(JSON.parse(calls[26]!.body!)).toEqual({});
+    expect(JSON.parse(calls[7]!.body!)).toEqual({ subscriber: "user_1", variant_id: "a" });
+    expect(JSON.parse(calls[31]!.body!)).toEqual({ text: "Hola {{ first_name | default: \"amiga\" }}", subscriber: "user_1", locale: "es" });
+    expect(JSON.parse(calls[32]!.body!)).toEqual({ attributes: { first_name: "Ana", plan: null } });
+    expect(calls.every((call) => call.headers["customy-version"] === "2026-09-27")).toBe(true);
+  });
+
+  it("actividad de prueba y buscar a una persona por atributo", async () => {
+    const replies = Array.from({ length: 4 }, () => (call: Call) => json(200, { object: "list", data: [], has_more: false, echo: call.url }));
+    const { fetch, calls } = scripted(replies);
+    const send = createSend({ baseUrl: BASE, accessToken: "cs_test_x", fetch });
+    await send.inApp.testEvents("iam_1", { limit: 20 });
+    await send.contentCards.testEvents("cc_1");
+    const found = await send.subscribers.find({ attribute: "email", value: "ana@example.com" });
+    expect(found.data).toEqual([]);
+    await send.subscribers.find({ attribute: "plan", value: "pro", limit: 5 });
+    expect(calls.map((call) => `${call.method} ${new URL(call.url).pathname}${new URL(call.url).search}`)).toEqual([
+      "GET /api/in-app/messages/iam_1/test-events?limit=20",
+      "GET /api/content-cards/cc_1/test-events",
+      "GET /api/subscribers?attribute=email&value=ana%40example.com",
+      "GET /api/subscribers?attribute=plan&value=pro&limit=5",
+    ]);
   });
 
   it("una sola clase de error entre el servidor y la bandeja, y la categoría de iOS de Send", () => {

@@ -1,5 +1,25 @@
 # @customyai/customy-sdk
 
+## 0.4.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/send-sdk@1.5.0
+  - @customyai/sdk@0.3.0
+
+## 0.4.0
+
+### Minor Changes
+
+- `customy.send` expone lo nuevo de Customy Send in-app v2 (aprobación, prueba, estadísticas, plantillas, kits de marca, tarjetas de contenido, `templates.preview` y `Customy-Version`), heredado de `@customyai/send` y `@customyai/send-sdk`. Solo adiciones: las uniones ampliadas (`InAppLayout`, `InAppStatus`, `ClientEventType`) no cambian nada para quien ya las usa.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.2.0
+  - @customyai/send-sdk@1.4.0
+
 ## 0.3.2
 
 ### Patch Changes

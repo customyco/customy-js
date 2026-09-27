@@ -18,12 +18,22 @@
  * los globales). En vivo = señal + relectura: el servidor avisa por WebSocket
  * con `{ counts, version }` y el cliente vuelve a leer; si el tiempo real no está
  * disponible o falla, consulta los contadores cada 30–60 s.
+ *
+ * Clientes evergreen: con `capabilities` (lo que la app sabe pintar) cada
+ * petición lleva la cabecera `Customy-Client` y Send adapta cada mensaje; sin
+ * ella el servidor trata la app como de 1.x. La configuración remota
+ * (`config()`) se relee cada `poll_seconds` y sus interruptores `kill` ocultan
+ * al momento los mensajes in-app, las tarjetas o los mensajes HTML.
  */
 import { CustomySendError, errorFromResponse } from "../errors";
 import type {
   ChannelPreference,
+  ClientCapabilities,
+  ClientConfig,
   ClientEvent,
+  EligibleContentCard,
   EligibleInAppMessage,
+  InAppLayout,
   InboxAction,
   InboxCounts,
   InboxItem,
@@ -32,18 +42,46 @@ import type {
   PushDevice,
   RegisterDeviceInput,
   SubscriberPreferences,
+  SurveyAnswers,
 } from "../engage-types";
+import { EVENT_NAME_MAX, EVENT_PROPERTIES_MAX_BYTES, jsonBytes } from "./bridge";
+import { matchesFilters } from "./filters";
 
 export { CustomySendError } from "../errors";
 export { actionCategoryId, type ActionCategoryInput } from "../actions";
+export { matchesFilter, matchesFilters, type FilterCondition } from "./filters";
+export { BRIDGE_SCRIPT, buildHtmlDocument, HTML_CSP, isSafeBridgeUrl, parseBridgeMessage, type BridgeMessage, type BridgeMessageType } from "./bridge";
+export { createInAppPresenter, type InAppPresenter, type InAppPresenterClient, type InAppPresenterOptions } from "./presenter";
 export type {
   ChannelPreference,
   SubscriberPreferences,
+  ClientCapabilities,
+  ClientConfig,
   ClientEvent,
   ClientEventType,
+  ClientFeature,
+  ClientKillSwitches,
+  EligibleContentCard,
   EligibleInAppMessage,
+  FilterOp,
+  InAppBlock,
+  InAppBlockAlign,
+  InAppBlockType,
   InAppButton,
+  InAppButtonAction,
+  InAppButtonStyle,
+  InAppButtonsBlock,
+  InAppDividerBlock,
+  InAppHeadingBlock,
+  InAppImageBlock,
   InAppLayout,
+  InAppSpacerBlock,
+  InAppStyle,
+  InAppSurveyBlock,
+  InAppSurveyKind,
+  InAppSurveyOption,
+  InAppTextBlock,
+  ContentCardKind,
   InboxAction,
   InboxCounts,
   InboxItem,
@@ -53,7 +91,52 @@ export type {
   PushPlatform,
   PushProvider,
   RegisterDeviceInput,
+  SurveyAnswers,
+  TriggerFilter,
 } from "../engage-types";
+
+/** Versión de este SDK en `Customy-Client` (`sdk`). */
+const SDK_ID = "send/0.2.0";
+
+/** Lo que Send da por hecho sin `Customy-Client` (apps de 1.x). */
+const LEGACY_LAYOUTS: readonly InAppLayout[] = ["modal", "banner", "fullscreen", "card"];
+
+/**
+ * Lo que declara una app que pinta todo: los 7 diseños, los 7 bloques y las
+ * funciones `variables`, `content_cards`, `bridge_v1` y `push_primer`.
+ *
+ *   createInboxClient({ token, platform: "ios", capabilities: { ...DEFAULT_CAPABILITIES, app_version: "1.4.2" } });
+ */
+export const DEFAULT_CAPABILITIES: Readonly<Required<Pick<ClientCapabilities, "layouts" | "blocks" | "features">>> = Object.freeze({
+  layouts: Object.freeze(["modal", "banner", "fullscreen", "card", "slideup", "tooltip", "html"] as const),
+  blocks: Object.freeze(["heading", "text", "image", "buttons", "spacer", "divider", "survey"] as const),
+  features: Object.freeze(["variables", "content_cards", "bridge_v1", "push_primer"] as const),
+});
+
+/** Una interacción in-app para `track.inApp`. */
+export type InAppTrackInput = {
+  id: string;
+  type: "impression" | "click" | "dismiss";
+  /** Id del botón pulsado. */
+  action?: string;
+  /** Por defecto los del mensaje en caché. */
+  variant_id?: string | null;
+  rendered_as?: string | null;
+};
+/** Una interacción con una tarjeta para `track.card`. */
+export type CardTrackInput = { id: string; type: "impression" | "click" | "dismiss"; variant_id?: string | null };
+export type SurveyResponseInput = { in_app_id: string; survey_id: string; answers: SurveyAnswers; variant_id?: string | null };
+export type InAppMessagesQuery = {
+  /** `session_start` (por defecto) o un evento de la app. */
+  trigger?: string;
+  /** Propiedades del evento, para `trigger_filters`. */
+  properties?: Record<string, unknown>;
+  /** Versión de la app: viaja como `app_version` (y en `Customy-Client`). */
+  appVersion?: string;
+  locale?: string;
+  /** Relee del servidor aunque ya estén cargados. */
+  refresh?: boolean;
+};
 
 /** Lo mínimo de un WebSocket (el del navegador, el de React Native o `ws`). */
 export type WebSocketLike = {
@@ -98,6 +181,12 @@ export type InboxClientOptions = {
   maxRealtimeFailures?: number;
   /** Errores de fondo (tiempo real, sondeo, recibos) que no llegan a ninguna promesa. */
   onError?: (error: unknown) => void;
+  /**
+   * Lo que esta app sabe pintar (`DEFAULT_CAPABILITIES` si lo pinta todo): cada
+   * petición lleva `Customy-Client` y Send adapta los mensajes. Sin esta opción
+   * no se manda la cabecera y Send la trata como una app de 1.x.
+   */
+  capabilities?: ClientCapabilities;
 };
 
 export type InboxConnection = "idle" | "connecting" | "realtime" | "polling";
@@ -114,6 +203,10 @@ export type InboxState = {
   counts: InboxCounts;
   connection: InboxConnection;
   inApp: { loaded: boolean; messages: EligibleInAppMessage[] };
+  /** Configuración remota (`config()`); `null` hasta leerla. */
+  config: ClientConfig | null;
+  /** Tarjetas de contenido (`contentCards()`), fijadas primero. */
+  cards: { loaded: boolean; items: EligibleContentCard[] };
 };
 
 export type InboxChange =
@@ -189,15 +282,40 @@ function applyAction(item: InboxItem, action: InboxAction): InboxItem {
   }
 }
 
-function pickInApp(messages: EligibleInAppMessage[], trigger: string, exclude: Set<string>, now = Date.now()): EligibleInAppMessage | null {
-  let best: EligibleInAppMessage | null = null;
+/** Los candidatos para un disparador, de mayor a menor prioridad (a igual prioridad, el orden del servidor). */
+function inAppCandidates(messages: EligibleInAppMessage[], trigger: string, properties: Record<string, unknown> | undefined, exclude: Set<string>, now = Date.now()): EligibleInAppMessage[] {
+  const out: EligibleInAppMessage[] = [];
   for (const message of messages) {
     if (exclude.has(message.id)) continue;
     if (message.trigger_event !== trigger && message.trigger_event !== "now") continue;
     if (message.ends_at && Date.parse(message.ends_at) <= now) continue;
-    if (!best || message.priority > best.priority) best = message;
+    if (message.trigger_filters?.length && !matchesFilters(message.trigger_filters, properties ?? {})) continue;
+    out.push(message);
   }
-  return best;
+  return out.map((message, index) => ({ message, index })).sort((a, b) => b.message.priority - a.message.priority || a.index - b.index).map((entry) => entry.message);
+}
+
+/** Mismos elementos en el mismo orden: así el estado no cambia de referencia sin motivo. */
+function sameItems<T>(a: T[], b: T[]): boolean {
+  return a.length === b.length && a.every((item, index) => item === b[index]);
+}
+
+function normalizeConfig(raw: Partial<ClientConfig> | null | undefined): ClientConfig {
+  const kill = (raw?.kill ?? {}) as Partial<ClientConfig["kill"]>;
+  const poll = Number(raw?.poll_seconds);
+  return {
+    ...(raw ?? {}),
+    object: "client_config",
+    poll_seconds: Number.isFinite(poll) && poll > 0 ? poll : 300,
+    features: raw?.features && typeof raw.features === "object" ? raw.features : {},
+    min_sdk: typeof raw?.min_sdk === "string" ? raw.min_sdk : null,
+    kill: { in_app: kill.in_app === true, content_cards: kill.content_cards === true, html: kill.html === true },
+    api_version: typeof raw?.api_version === "string" ? raw.api_version : null,
+  };
+}
+
+function invalidEvent(message: string): CustomySendError {
+  return new CustomySendError({ code: "SDK_INVALID_EVENT", status: 0, message });
 }
 
 // ── El cliente ─────────────────────────────────────────────────────────
@@ -215,6 +333,25 @@ export function createInboxClient(options: InboxClientOptions) {
   const flushIntervalMs = options.events?.flushIntervalMs ?? 3_000;
   const maxBatch = Math.min(100, Math.max(1, options.events?.maxBatch ?? 20));
   const maxQueue = options.events?.maxQueue ?? 1_000;
+  const capabilities = options.capabilities ?? null;
+  let appVersion = capabilities?.app_version;
+  let clientHeader: string | null = null;
+  /** `Customy-Client`, solo si la app declaró lo que sabe pintar. */
+  function capabilityHeaders(): Record<string, string> {
+    if (!capabilities) return {};
+    if (clientHeader === null) {
+      const platform = capabilities.platform ?? options.platform;
+      clientHeader = JSON.stringify({
+        sdk: capabilities.sdk ?? SDK_ID,
+        ...(appVersion ? { app_version: appVersion } : {}),
+        ...(platform ? { platform } : {}),
+        layouts: capabilities.layouts ?? LEGACY_LAYOUTS,
+        blocks: capabilities.blocks ?? [],
+        features: capabilities.features ?? [],
+      });
+    }
+    return { "customy-client": clientHeader };
+  }
   const reportError = (error: unknown) => {
     try {
       options.onError?.(error);
@@ -237,6 +374,8 @@ export function createInboxClient(options: InboxClientOptions) {
     counts: { unread: 0, unseen: 0, version: -1 },
     connection: "idle",
     inApp: { loaded: false, messages: [] },
+    config: null,
+    cards: { loaded: false, items: [] },
   };
   const stateListeners = new Set<() => void>();
   const changeListeners = new Set<(change: InboxChange) => void>();
@@ -289,7 +428,7 @@ export function createInboxClient(options: InboxClientOptions) {
       try {
         res = await fetchImpl(`${baseUrl}${path}`, {
           method,
-          headers: { authorization: `Bearer ${token}`, accept: "application/json", ...(body !== undefined ? { "content-type": "application/json" } : {}) },
+          headers: { authorization: `Bearer ${token}`, accept: "application/json", ...(body !== undefined ? { "content-type": "application/json" } : {}), ...capabilityHeaders() },
           body: body !== undefined ? JSON.stringify(body) : undefined,
           ...(controller ? { signal: controller.signal } : {}),
         });
@@ -490,7 +629,7 @@ export function createInboxClient(options: InboxClientOptions) {
     }, delay);
   }
   /** Encola recibos; salen en lotes. Cada uno lleva un id estable: reintentar no duplica. */
-  function track(events: ClientEvent | ClientEvent[]) {
+  function trackEvents(events: ClientEvent | ClientEvent[]) {
     const list = Array.isArray(events) ? events : [events];
     for (const event of list) {
       queue.push({ ...event, id: event.id ?? randomId("evt"), occurred_at: event.occurred_at ?? new Date().toISOString() });
@@ -535,19 +674,114 @@ export function createInboxClient(options: InboxClientOptions) {
     return flushing;
   }
 
-  // ── Mensajes in-app ────────────────────────────────────────────────
+  // ── Configuración remota e interruptores ───────────────────────────
   const shown = new Set<string>();
   const closedInApp = new Set<string>();
+  const closedCards = new Set<string>();
+  /** Lo último que dio el servidor; el estado es esto menos lo cerrado y lo apagado por `kill`. */
+  let rawInApp: EligibleInAppMessage[] = [];
+  let rawCards: EligibleContentCard[] = [];
+  function visibleInApp(): EligibleInAppMessage[] {
+    const kill = state.config?.kill;
+    if (kill?.in_app) return [];
+    return rawInApp.filter((m) => !closedInApp.has(m.id) && !(kill?.html && m.layout === "html"));
+  }
+  function visibleCards(): EligibleContentCard[] {
+    if (state.config?.kill.content_cards) return [];
+    return rawCards.filter((card) => !closedCards.has(card.id));
+  }
+  /** Recalcula lo visible; solo cambia la referencia de lo que de verdad cambió. */
+  function refreshVisible(patch: Partial<InboxState> = {}) {
+    setState(patch);
+    const messages = visibleInApp();
+    const items = visibleCards();
+    const next: Partial<InboxState> = {};
+    if (!sameItems(messages, state.inApp.messages)) next.inApp = { ...state.inApp, messages };
+    if (!sameItems(items, state.cards.items)) next.cards = { ...state.cards, items };
+    if (next.inApp || next.cards) setState(next);
+  }
+
+  let configInFlight: Promise<ClientConfig | null> | null = null;
+  /** Leerla: siempre con `capabilities`, o desde la primera llamada a `config()`. */
+  let configWanted = capabilities !== null;
+  let configAttempted = false;
+  /** Un Send sin `/client/config` (404): no se vuelve a pedir. */
+  let configUnavailable = false;
+  let configTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Lee la configuración remota y aplica sus interruptores al momento. `null` si el servidor no la tiene. */
+  function config(): Promise<ClientConfig | null> {
+    configWanted = true;
+    configAttempted = true;
+    if (configUnavailable) return Promise.resolve(state.config);
+    if (configInFlight) return configInFlight;
+    configInFlight = http<Partial<ClientConfig>>("GET", "/client/config")
+      .then(
+        (raw) => {
+          refreshVisible({ config: normalizeConfig(raw) });
+          scheduleConfigPoll();
+          return state.config;
+        },
+        (error) => {
+          if (error instanceof CustomySendError && error.status === 404) {
+            configUnavailable = true;
+            return state.config;
+          }
+          throw error;
+        },
+      )
+      .finally(() => {
+        configInFlight = null;
+      });
+    return configInFlight;
+  }
+  function stopConfigPoll() {
+    if (configTimer) clearTimeout(configTimer);
+    configTimer = null;
+  }
+  /** Mientras hay alguien suscrito, cada `poll_seconds` (30 s … 1 día). */
+  function scheduleConfigPoll() {
+    stopConfigPoll();
+    if (!liveCount || closed || configUnavailable || !configWanted) return;
+    const seconds = Math.min(86_400, Math.max(30, state.config?.poll_seconds ?? 300));
+    configTimer = setTimeout(() => {
+      configTimer = null;
+      config().catch((error) => {
+        reportError(error);
+        scheduleConfigPoll();
+      });
+    }, seconds * 1000);
+  }
+  /** Con `capabilities`, la primera lectura de mensajes o tarjetas trae también la configuración. */
+  function ensureConfig() {
+    if (capabilities && !configAttempted) config().catch(reportError);
+  }
+
+  // ── Mensajes in-app ────────────────────────────────────────────────
   let inAppLocale = options.locale;
   let inAppLoading: Promise<EligibleInAppMessage[]> | null = null;
-  function eligible(locale?: string): Promise<EligibleInAppMessage[]> {
+  function clientQuery(): string {
+    const params = new URLSearchParams({
+      ...(inAppLocale ? { locale: inAppLocale } : {}),
+      ...(options.platform ? { platform: options.platform } : {}),
+      ...(appVersion ? { app_version: appVersion } : {}),
+    });
+    return params.toString() ? `?${params}` : "";
+  }
+  function setAppVersion(version: string | undefined) {
+    if (!version || version === appVersion) return false;
+    appVersion = version;
+    clientHeader = null;
+    return true;
+  }
+  function eligible(locale?: string, params: { appVersion?: string } = {}): Promise<EligibleInAppMessage[]> {
     if (locale) inAppLocale = locale;
+    setAppVersion(params.appVersion);
     if (inAppLoading) return inAppLoading;
-    const params = new URLSearchParams({ ...(inAppLocale ? { locale: inAppLocale } : {}), ...(options.platform ? { platform: options.platform } : {}) });
-    const q = params.toString() ? `?${params}` : "";
-    inAppLoading = http<{ data: EligibleInAppMessage[] }>("GET", `/client/in-app${q}`)
+    ensureConfig();
+    inAppLoading = http<{ data: EligibleInAppMessage[] }>("GET", `/client/in-app${clientQuery()}`)
       .then((out) => {
-        const messages = (out.data ?? []).filter((m) => !closedInApp.has(m.id));
+        rawInApp = Array.isArray(out?.data) ? out.data : [];
+        const messages = visibleInApp();
         setState({ inApp: { loaded: true, messages } });
         return messages;
       })
@@ -555,6 +789,26 @@ export function createInboxClient(options: InboxClientOptions) {
         inAppLoading = null;
       });
     return inAppLoading;
+  }
+  /**
+   * Los mensajes para un disparador cuyos `trigger_filters` cumplen estas
+   * propiedades, de mayor a menor prioridad. Los lee del servidor si aún no
+   * están (o con `refresh`, o si cambió `appVersion`).
+   */
+  async function inAppMessages(query: InAppMessagesQuery = {}): Promise<EligibleInAppMessage[]> {
+    const versionChanged = setAppVersion(query.appVersion);
+    if (!state.inApp.loaded || query.refresh || versionChanged || (query.locale && query.locale !== inAppLocale)) await eligible(query.locale);
+    return inAppCandidates(state.inApp.messages, query.trigger ?? "session_start", query.properties, new Set([...shown, ...closedInApp]));
+  }
+  function cachedInApp(id: string) {
+    return rawInApp.find((m) => m.id === id);
+  }
+  /** `variant_id` y `rendered_as` del mensaje en caché (solo si el servidor los mandó). */
+  function inAppExtras(id: string, override: { variant_id?: string | null; rendered_as?: string | null } = {}) {
+    const cached = cachedInApp(id);
+    const variant = override.variant_id !== undefined ? override.variant_id : cached?.variant_id;
+    const rendered = override.rendered_as !== undefined ? override.rendered_as : cached?.rendered_as;
+    return { ...(variant != null ? { variant_id: variant } : {}), ...(rendered != null ? { rendered_as: rendered } : {}) };
   }
   let inAppTimer: ReturnType<typeof setTimeout> | null = null;
   function inAppChanged(id?: string) {
@@ -566,34 +820,110 @@ export function createInboxClient(options: InboxClientOptions) {
     }, 250);
   }
   function frequencyOf(id: string) {
-    return state.inApp.messages.find((m) => m.id === id)?.frequency ?? "once";
+    return (state.inApp.messages.find((m) => m.id === id) ?? cachedInApp(id))?.frequency ?? "once";
   }
   function closeInApp(id: string) {
     closedInApp.add(id);
-    setState({ inApp: { ...state.inApp, messages: state.inApp.messages.filter((m) => m.id !== id) } });
+    refreshVisible();
   }
   const inApp = {
     /** Los mensajes que le tocan a esta persona ahora (el servidor aplica audiencia, fechas y topes). */
     eligible,
-    /** El mensaje a mostrar para un disparador (`session_start`, un evento de la app): el de mayor prioridad. */
-    forTrigger(trigger: string): EligibleInAppMessage | null {
-      return pickInApp(state.inApp.messages, trigger, new Set([...shown, ...closedInApp]));
+    /**
+     * El mensaje a mostrar para un disparador (`session_start`, un evento de la
+     * app): el de mayor prioridad cuyos `trigger_filters` cumplen `properties`.
+     */
+    forTrigger(trigger: string, properties?: Record<string, unknown>): EligibleInAppMessage | null {
+      return inAppCandidates(state.inApp.messages, trigger, properties, new Set([...shown, ...closedInApp]))[0] ?? null;
     },
     /** Se mostró. Con frecuencia distinta de `always` no vuelve en esta sesión. */
     impression(id: string) {
       if (frequencyOf(id) !== "always") shown.add(id);
-      track({ type: "impression", in_app_id: id, channel: "in_app" });
+      trackEvents({ type: "impression", in_app_id: id, channel: "in_app", ...inAppExtras(id) });
     },
     /** Pulsó un botón (`action` = id del botón) o el mensaje. */
     click(id: string, action?: string) {
-      track({ type: "clicked", in_app_id: id, channel: "in_app", ...(action ? { action } : {}) });
+      trackEvents({ type: "clicked", in_app_id: id, channel: "in_app", ...(action ? { action } : {}), ...inAppExtras(id) });
       closeInApp(id);
     },
     dismiss(id: string) {
-      track({ type: "dismissed", in_app_id: id, channel: "in_app" });
+      trackEvents({ type: "dismissed", in_app_id: id, channel: "in_app", ...inAppExtras(id) });
       closeInApp(id);
     },
   };
+
+  // ── Tarjetas de contenido ──────────────────────────────────────────
+  let cardsLoading: Promise<EligibleContentCard[]> | null = null;
+  /** El feed de tarjetas de esta persona (fijadas primero, luego por prioridad). */
+  function contentCards(params: { locale?: string; appVersion?: string } = {}): Promise<EligibleContentCard[]> {
+    if (params.locale) inAppLocale = params.locale;
+    setAppVersion(params.appVersion);
+    if (cardsLoading) return cardsLoading;
+    ensureConfig();
+    cardsLoading = http<{ data: EligibleContentCard[] }>("GET", `/client/content-cards${clientQuery()}`)
+      .then((out) => {
+        const list = Array.isArray(out?.data) ? out.data : [];
+        rawCards = list
+          .map((card, index) => ({ card, index }))
+          .sort((a, b) => Number(b.card.pinned) - Number(a.card.pinned) || (b.card.priority ?? 0) - (a.card.priority ?? 0) || a.index - b.index)
+          .map((entry) => entry.card);
+        const items = visibleCards();
+        setState({ cards: { loaded: true, items } });
+        return items;
+      })
+      .finally(() => {
+        cardsLoading = null;
+      });
+    return cardsLoading;
+  }
+
+  // ── Recibos v2: in-app, tarjetas, encuestas y eventos propios ──────
+  const track = Object.assign(trackEvents, {
+    /** `in_app_impression|in_app_click|in_app_dismiss` con botón, variante y cómo se pintó; también marca visto o cerrado. */
+    inApp(input: InAppTrackInput) {
+      trackEvents({ type: `in_app_${input.type}`, in_app_id: input.id, channel: "in_app", ...(input.action ? { action: input.action } : {}), ...inAppExtras(input.id, input) });
+      if (input.type === "impression") {
+        if (frequencyOf(input.id) !== "always") shown.add(input.id);
+      } else closeInApp(input.id);
+    },
+    /** `card_impression|card_click|card_dismiss`; al descartarla sale del feed. */
+    card(input: CardTrackInput) {
+      const variant = input.variant_id !== undefined ? input.variant_id : rawCards.find((card) => card.id === input.id)?.variant_id;
+      trackEvents({ type: `card_${input.type}`, card_id: input.id, ...(variant != null ? { variant_id: variant } : {}) });
+      if (input.type === "dismiss") {
+        closedCards.add(input.id);
+        refreshVisible();
+      }
+    },
+  });
+
+  /** Respuesta a un bloque `survey` (opciones elegidas, una nota o un texto). */
+  function submitSurvey(input: SurveyResponseInput) {
+    if (!input || typeof input.in_app_id !== "string" || !input.in_app_id || typeof input.survey_id !== "string" || !input.survey_id) throw invalidEvent("submitSurvey: hacen falta in_app_id y survey_id");
+    const answers = input.answers;
+    const valid = typeof answers === "string" || (typeof answers === "number" && Number.isFinite(answers)) || (Array.isArray(answers) && answers.every((a) => typeof a === "string"));
+    if (!valid) throw invalidEvent("submitSurvey: answers es string[], número o texto");
+    const bytes = jsonBytes(answers);
+    if (bytes === null || bytes > EVENT_PROPERTIES_MAX_BYTES) throw invalidEvent("submitSurvey: answers supera 2 KB");
+    const variant = input.variant_id !== undefined ? input.variant_id : cachedInApp(input.in_app_id)?.variant_id;
+    trackEvents({ type: "survey_response", in_app_id: input.in_app_id, survey_id: input.survey_id, answers, ...(variant != null ? { variant_id: variant } : {}) });
+  }
+
+  /**
+   * Un evento propio (`custom`): cuenta para las conversiones y los disparadores
+   * con filtros. Nombre de 1 a 60 caracteres y propiedades de hasta 2 KB en
+   * JSON; si no, lanza `CustomySendError` con código `SDK_INVALID_EVENT`.
+   */
+  function logEvent(name: string, properties?: Record<string, unknown>) {
+    if (typeof name !== "string" || name.length === 0 || name.length > EVENT_NAME_MAX) throw invalidEvent(`logEvent: el nombre tiene de 1 a ${EVENT_NAME_MAX} caracteres`);
+    if (properties !== undefined && properties !== null) {
+      if (typeof properties !== "object" || Array.isArray(properties)) throw invalidEvent("logEvent: las propiedades son un objeto");
+      const bytes = jsonBytes(properties);
+      if (bytes === null) throw invalidEvent("logEvent: las propiedades no se pueden pasar a JSON");
+      if (bytes > EVENT_PROPERTIES_MAX_BYTES) throw invalidEvent(`logEvent: las propiedades ocupan ${bytes} B (máximo ${EVENT_PROPERTIES_MAX_BYTES})`);
+    }
+    trackEvents({ type: "custom", name, ...(properties ? { properties } : {}) });
+  }
 
   // ── Preferencias de la persona ─────────────────────────────────────
   const preferences = {
@@ -758,7 +1088,16 @@ export function createInboxClient(options: InboxClientOptions) {
   function subscribe(onChange: (change: InboxChange) => void): () => void {
     changeListeners.add(onChange);
     liveCount += 1;
-    if (liveCount === 1 && !closed) void connect();
+    if (liveCount === 1 && !closed) {
+      void connect();
+      // La configuración remota se relee mientras la app escucha.
+      if (configWanted && !configUnavailable) {
+        config().catch((error) => {
+          reportError(error);
+          scheduleConfigPoll();
+        });
+      }
+    }
     let active = true;
     return () => {
       if (!active) return;
@@ -768,6 +1107,7 @@ export function createInboxClient(options: InboxClientOptions) {
       if (liveCount === 0) {
         stopSocket();
         stopPolling();
+        stopConfigPoll();
         setState({ connection: "idle" });
       }
     };
@@ -793,10 +1133,16 @@ export function createInboxClient(options: InboxClientOptions) {
     markRead: (ids: string[] | "all") => mark("read", ids),
     markUnread: (ids: string[]) => mark("unread", ids),
     archive: (ids: string[]) => mark("archived", ids),
+    /** Recibos (`track(evento)`), y `track.inApp(…)` / `track.card(…)`. */
     track,
     opened,
     flush,
     inApp,
+    inAppMessages,
+    contentCards,
+    config,
+    submitSurvey,
+    logEvent,
     devices,
     preferences,
     subscribe,
@@ -804,6 +1150,7 @@ export function createInboxClient(options: InboxClientOptions) {
     async close(): Promise<void> {
       stopSocket();
       stopPolling();
+      stopConfigPoll();
       if (refetchTimer) clearTimeout(refetchTimer);
       if (inAppTimer) clearTimeout(inAppTimer);
       refetchTimer = inAppTimer = null;

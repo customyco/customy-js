@@ -8,10 +8,12 @@
  *
  *   const { items, loadMore, hasMore, markRead } = useInbox();
  *   const { unread, unreadLabel } = useInboxCounts();   // «99+»
- *   const { message, trackInApp } = useInAppMessages({ trigger: "session_start" });
+ *   const { message, trackInApp } = useInAppMessages({ trigger: "checkout_viewed", properties: { total: 80 } });
+ *   const { cards, track } = useContentCards();
+ *   const config = useCustomyConfig();
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { formatBadgeCount, type EligibleInAppMessage, type InboxChange, type InboxClient, type InboxState, type InboxStatus } from "./index";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { createInAppPresenter, formatBadgeCount, type ClientConfig, type InboxChange, type InboxClient, type InboxState, type InboxStatus, type SurveyAnswers } from "./index";
 
 export { formatBadgeCount } from "./index";
 
@@ -108,59 +110,113 @@ export function useInboxCounts(options: { max?: number } = {}) {
 export type UseInAppMessagesOptions = {
   /** `session_start` (por defecto) o un evento de la app (`checkout_viewed`). */
   trigger?: string;
+  /** Propiedades del evento: solo salen los mensajes cuyos `trigger_filters` las cumplen. */
+  properties?: Record<string, unknown>;
   locale?: string;
+  /** Versión de la app (`app_version` en la lectura). */
+  appVersion?: string;
   /** false = no elegir mensaje ahora (p. ej. durante un flujo crítico). */
   enabled?: boolean;
 };
 
+function stableKey(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /**
  * El mensaje in-app que toca mostrar para el disparador (el de mayor
- * prioridad). Se mantiene hasta que se pulsa o se cierra; entonces sale el
+ * prioridad cuyos `trigger_filters` cumplen `properties`). Con `delay_seconds`
+ * aparece tras esa espera (se cancela al desmontar o al cambiar de
+ * disparador). Se mantiene hasta que se pulsa o se cierra; entonces sale el
  * siguiente, si hay. Llama a `trackInApp.impression()` cuando de verdad se ve.
  */
 export function useInAppMessages(options: UseInAppMessagesOptions = {}) {
   const client = useInboxClient();
   const trigger = options.trigger ?? "session_start";
   const enabled = options.enabled ?? true;
-  const inApp = useSyncExternalStore(client.onState, () => client.getState().inApp, () => client.getState().inApp);
-  const [current, setCurrent] = useState<EligibleInAppMessage | null>(null);
-  const shownRef = useRef<string | null>(null);
+  const propertiesKey = stableKey(options.properties ?? null);
+  const loaded = useSyncExternalStore(client.onState, () => client.getState().inApp.loaded, () => client.getState().inApp.loaded);
+  const presenter = useMemo(() => createInAppPresenter(client, { trigger, properties: options.properties, enabled }), [client]);
+  const message = useSyncExternalStore(presenter.subscribe, presenter.getMessage, presenter.getMessage);
 
   useEffect(() => {
-    if (!client.getState().inApp.loaded) client.inApp.eligible(options.locale).catch(() => undefined);
-  }, [client, options.locale]);
+    if (!client.getState().inApp.loaded) client.inApp.eligible(options.locale, { appVersion: options.appVersion }).catch(() => undefined);
+  }, [client, options.locale, options.appVersion]);
 
   useEffect(() => {
-    if (!enabled || current) return;
-    const next = client.inApp.forTrigger(trigger);
-    if (next) setCurrent(next);
-  }, [client, trigger, enabled, current, inApp]);
+    presenter.update({ trigger, properties: options.properties, enabled });
+    // `propertiesKey` en lugar del objeto: un literal nuevo en cada render no reinicia la espera.
+  }, [presenter, trigger, propertiesKey, enabled]);
 
-  // Si el servidor retira un mensaje que aún no se vio (archivado, fuera de fechas), no se muestra.
-  useEffect(() => {
-    if (current && shownRef.current !== current.id && inApp.loaded && !inApp.messages.some((m) => m.id === current.id)) setCurrent(null);
-  }, [current, inApp]);
+  useEffect(() => () => presenter.close(), [presenter]);
 
   const trackInApp = useMemo(
     () => ({
-      impression: () => {
-        if (!current || shownRef.current === current.id) return;
-        shownRef.current = current.id;
-        client.inApp.impression(current.id);
-      },
-      click: (action?: string) => {
-        if (!current) return;
-        client.inApp.click(current.id, action);
-        setCurrent(null);
-      },
-      dismiss: () => {
-        if (!current) return;
-        client.inApp.dismiss(current.id);
-        setCurrent(null);
-      },
+      impression: () => presenter.impression(),
+      click: (action?: string) => presenter.click(action),
+      dismiss: () => presenter.dismiss(),
     }),
-    [client, current],
+    [presenter],
   );
 
-  return { message: enabled ? current : null, loaded: inApp.loaded, trackInApp };
+  return {
+    message,
+    loaded,
+    trackInApp,
+    /** Respuesta a un bloque `survey` del mensaje en pantalla. */
+    submitSurvey: useCallback((surveyId: string, answers: SurveyAnswers) => presenter.submitSurvey(surveyId, answers), [presenter]),
+  };
+}
+
+export type UseContentCardsOptions = {
+  /** Carga el feed al montar si aún no está. Por defecto true. */
+  autoLoad?: boolean;
+  locale?: string;
+  appVersion?: string;
+};
+
+/**
+ * El feed de tarjetas de contenido (fijadas primero). `track.impression(id)`
+ * cuenta una vez por tarjeta mientras el componente vive; `dismiss` la quita.
+ */
+export function useContentCards(options: UseContentCardsOptions = {}) {
+  const client = useInboxClient();
+  const cards = useSyncExternalStore(client.onState, () => client.getState().cards, () => client.getState().cards);
+  const autoLoad = options.autoLoad ?? true;
+  const seenRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (autoLoad && !client.getState().cards.loaded) client.contentCards({ locale: options.locale, appVersion: options.appVersion }).catch(() => undefined);
+  }, [client, autoLoad, options.locale, options.appVersion]);
+  const track = useMemo(
+    () => ({
+      impression: (id: string) => {
+        if (seenRef.current.has(id)) return;
+        seenRef.current.add(id);
+        client.track.card({ id, type: "impression" });
+      },
+      click: (id: string) => client.track.card({ id, type: "click" }),
+      dismiss: (id: string) => client.track.card({ id, type: "dismiss" }),
+    }),
+    [client],
+  );
+  return {
+    cards: cards.items,
+    loaded: cards.loaded,
+    refresh: useCallback(() => client.contentCards({ locale: options.locale, appVersion: options.appVersion }), [client, options.locale, options.appVersion]),
+    track,
+  };
+}
+
+/** La configuración remota (`GET /client/config`), reactiva; la lee si aún no está. `null` mientras tanto. */
+export function useCustomyConfig(): ClientConfig | null {
+  const client = useInboxClient();
+  const config = useSyncExternalStore(client.onState, () => client.getState().config, () => client.getState().config);
+  useEffect(() => {
+    if (!client.getState().config) client.config().catch(() => undefined);
+  }, [client]);
+  return config;
 }
