@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.7.0
+
+### Added
+
+- `./native`: `createCustomyNativeAuth` — Customy Access for iOS/Android apps (React
+  Native, Expo) following OAuth 2.1 for native apps (RFC 8252). The app gives only its
+  publishable key and the Access URL; organization, environment, providers and its
+  registered native client are discovered from `/api/public/auth-config`. Email/password
+  sign-in and sign-up, social providers (Google…) in the system browser with PKCE S256
+  (hosted by Access, optionally through the app's web origin so provider callbacks are
+  reused), rotating refresh tokens kept in the device's secure storage (the Access session
+  never stays on the device), silent renewal (`getAccessToken`), revocation on `signOut`
+  (RFC 7009). Storage, browser and crypto are injected adapters: no platform imports.
+- `./native/react`: `CustomyNativeAuthProvider` and `useCustomyNativeAuth` (status, user,
+  discovered providers, actions).
+- Flags: `trackConversion(flagKey, context, { value, metric, id })` attributes a
+  conversion to the treatment the flag serves that key, so Customy Analytics
+  measures each flag as an experiment per treatment. Retries keep their `id`
+  and count once.
+- Flags: `verifySignature: true` requires each snapshot to be signed by the Access
+  issuer (RS256, checked against `/oauth/jwks.json`) and its content to match
+  the signed SHA-256; a snapshot that fails is rejected and the previous one
+  stays in use, so a CDN or cache in between cannot alter flags.
+- Flags: `cdn: true` (with `publishableKey`) reads the public snapshot from the CDN:
+  `latest.json` for polling (5 s at the edge) and the immutable URL of each
+  version announced over realtime, so a kill switch never waits on a cache.
+  A cached response older than the current version is ignored.
+
+Requires Access with native apps (`/api/auth/native/*`, `refresh_token` grant for public
+clients, `/oauth/revoke`).
+
 ## 0.6.0
 
 ### Added

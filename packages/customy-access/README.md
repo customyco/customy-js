@@ -353,6 +353,55 @@ The React hooks automatically reuse tenant headers from `CustomyProvider` (`x-en
 
 `CustomyProvider` · `SignInButton` · `SignOutButton` · `UserButton` · `ProtectedRoute` · `OrganizationSwitcher` · `ImpersonationBanner`
 
+## Native apps — `@customyai/customy-access/native`
+
+Sign-in for iOS/Android apps (React Native, Expo) following OAuth 2.1 for native apps
+(RFC 8252): authorization code with PKCE S256, social providers in the system browser
+(private session), rotating refresh tokens in the device's secure storage and revocation
+on sign-out. The app only knows its **publishable key** and the Access URL — organization,
+environment, providers and its native client are discovered from the key.
+
+**Register the app** once per environment: a public OAuth client (`tokenEndpointAuthMethod:
+"none"`, grant `authorization_code`) with the app's redirect (`myapp://auth`; add `exp://*`
+to allow Expo Go in development). It then appears in `GET /api/public/auth-config`.
+
+```ts
+import * as SecureStore from "expo-secure-store";
+import * as WebBrowser from "expo-web-browser";
+import * as Crypto from "expo-crypto";
+import * as Linking from "expo-linking";
+import { createCustomyNativeAuth } from "@customyai/customy-access/native";
+import { CustomyNativeAuthProvider, useCustomyNativeAuth } from "@customyai/customy-access/native/react";
+
+export const auth = createCustomyNativeAuth({
+  publishableKey: process.env.EXPO_PUBLIC_CUSTOMY_PUBLISHABLE_KEY!,
+  accessUrl: process.env.EXPO_PUBLIC_CUSTOMY_ACCESS_URL!,
+  authOrigin: process.env.EXPO_PUBLIC_APP_WEB_URL, // the web that proxies /api/auth (reuses provider callbacks)
+  redirectUri: Linking.createURL("auth"),
+  storage: {
+    get: (k) => SecureStore.getItemAsync(k),
+    set: (k, v) => SecureStore.setItemAsync(k, v),
+    delete: (k) => SecureStore.deleteItemAsync(k),
+  },
+  browser: {
+    openAuthSession: (url, redirect) => WebBrowser.openAuthSessionAsync(url, redirect, { preferEphemeralSession: true }),
+  },
+  crypto: {
+    randomBytes: (n) => Crypto.getRandomBytes(n),
+    sha256: async (d) => new Uint8Array(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, d)),
+  },
+});
+
+// <CustomyNativeAuthProvider auth={auth}>…</CustomyNativeAuthProvider>
+const { status, user, providers, signInWithPassword, signInWithProvider, getAccessToken, signOut } = useCustomyNativeAuth();
+```
+
+`getAccessToken()` returns a token for your API (audience = the native client), renewed
+silently; your API verifies it with the issuer's JWKS. On the server side, Access hosts
+`/api/auth/native/start` + `/api/auth/native/return` (social), `POST /api/auth/native/authorize`
+(after in-app sign-in), the `refresh_token` grant at `/oauth/token` (rotation, reuse revokes
+the session) and `/oauth/revoke`.
+
 ## Edge SDK — `@customyai/customy-access/edge`
 
 ```ts

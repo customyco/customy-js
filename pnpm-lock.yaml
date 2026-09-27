@@ -78,7 +78,7 @@ importers:
   packages/sdk:
     dependencies:
       '@customyai/customy-access':
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../customy-access
       '@customyai/links-sdk':
         specifier: ^0.2.0
