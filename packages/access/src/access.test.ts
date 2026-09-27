@@ -2,7 +2,7 @@ import { createMachineTokens, CustomySdkError } from "@customyai/core";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { createFlagsClient, type CustomyFlagsSnapshot } from "./flags";
 import { ACCESS_OPERATIONS, createAccessApi, expandPath } from "./generated";
-import { capabilityFromSnapshot, createAccess, CustomyAccessError, type AccessMeSnapshot } from "./index";
+import { ACCESS_SCOPES, capabilityFromSnapshot, createAccess, CustomyAccessError, type AccessMeSnapshot } from "./index";
 
 type Call = { url: string; method: string; headers: Record<string, string>; body?: string };
 
@@ -87,6 +87,22 @@ describe("@customyai/access: fachada", () => {
         const access = createAccess({ baseUrl: BASE, machineTokens, scopes: ["users:contact:read"], environmentId: ENV, fetch });
         await expect(access.users.contact("usr_1")).resolves.toMatchObject({ email: "ana@example.com" });
         expect(new URLSearchParams(calls[0]!.body).get("scope")).toBe("users:contact:read");
+    });
+
+    it("el catálogo se lee con machineTokens y catalog:read (sin admin:*), y ACCESS_SCOPES lista los scopes por función", async () => {
+        const { fetch, calls } = scripted([
+            json(200, { access_token: "tok", expires_in: 300 }),
+            json(200, { items: [{ lookupKey: "reports.view" }] }),
+        ]);
+        const machineTokens = createMachineTokens({ issuer: BASE, clientId: "app", clientSecret: "secret", fetch });
+        const access = createAccess({ baseUrl: BASE, machineTokens, scopes: ["catalog:read"], environmentId: ENV, fetch });
+        await expect(access.catalog.features()).resolves.toEqual([{ lookupKey: "reports.view" }]);
+        expect(new URLSearchParams(calls[0]!.body).get("scope")).toBe("catalog:read");
+        expect(new URLSearchParams(calls[0]!.body).get("audience")).toBe("customy-access");
+        expect(calls[1]!.url).toBe(`${BASE}/api/admin/env/${ENV}/catalog/features`);
+        expect(calls[1]!.headers.authorization ?? calls[1]!.headers.Authorization).toBe("Bearer tok");
+        expect([...ACCESS_SCOPES]).toEqual(["capabilities:read", "users:contact:read", "users:read", "catalog:read", "flags:read"]);
+        expect(ACCESS_SCOPES).not.toContain("admin:*");
     });
 
     it("un texto legible en `error` no se hace pasar por código; lecturas se reintentan ante 503", async () => {
