@@ -55,11 +55,33 @@ export type NotificationDelivery = {
   /** `subscriber` = la hora de `send_at` en la zona de cada persona; o una zona IANA (`America/Bogota`). */
   timezone?: "subscriber" | (string & {});
   quiet_hours?: QuietHours;
+  /** El plan que se vio (`notifications.plan`): obligatorio para audiencias y lanzamientos desde Workspace o el Agente. */
+  decision?: DeliveryDecision;
 };
 
+/** Qué hacer con quien está en horas de silencio o fuera de su ventana legal. */
+export type DeliveryDecisionOption = "respect_quiet_hours" | "send_now_to_available_rest_later" | "schedule_at" | "override_quiet_hours";
+
+export type DeliveryDecision = {
+  option: DeliveryDecisionOption;
+  /** El `plan_hash` del plan visto; si el plan cambió, `409 plan_changed` con el nuevo. */
+  plan_hash: string;
+  /** Obligatorio para `override_quiet_hours` (con `lane: "transactional"`). */
+  reason?: string;
+  /** `schedule_at`: el momento elegido (por defecto el `suggested_at` del plan). */
+  send_at?: string;
+};
+
+/** A quién (filtros con la gramática de in-app, `AudienceFilter`): todos (Y); `[]` = todas las personas; `segment_id` = una audiencia de Customy Data. */
+export type NotificationAudience = { filters: AudienceFilter[]; segment_id?: string };
+
 export type SendNotificationInput = {
-  /** El id de usuario de la app, o hasta 1000. */
-  to: string | string[];
+  /** El id de usuario de la app, o hasta 1000 (o `audience`, nunca los dos). */
+  to?: string | string[];
+  /** Una audiencia en vez de `to`: se expande por lotes y exige `delivery.decision` (el plan visto). */
+  audience?: NotificationAudience;
+  /** Envío de prueba: sale ya (sin horas de silencio, topes, preferencias ni `send_at`) y no cuenta en los números reales. Solo con `to` (≤ 25). */
+  test?: boolean;
   /** Por defecto `["push", "inbox"]` (`["push"]` en un push silencioso); push = APNs + FCM + Web Push. */
   channels?: NotificationChannel[];
   /** `transactional` sale primero (sin topes ni preferencias); `bulk` cede el paso y va con prioridad normal. Por defecto `default`. */
@@ -135,6 +157,164 @@ export type Notification = {
   funnel?: NotificationFunnel;
   /** `true` cuando la misma `Idempotency-Key` ya se había aceptado (no se manda otra vez). */
   replayed?: boolean;
+  /** Envío de prueba (fuera de las estadísticas reales). */
+  test?: boolean;
+  audience?: { filters: AudienceFilter[]; segment_id: string | null; status: "expanding" | "done"; scanned: number; matched: number; batches: number } | null;
+  /** Plataformas a las que va (filtros de plataforma de la audiencia); `null` = todas. */
+  platforms?: Array<"ios" | "android" | "web"> | null;
+  /** La decisión con la que se lanzó. */
+  decision?: { option: DeliveryDecisionOption; plan_hash: string | null; reason?: string } | null;
+  /** Lo que decidió el planificador, por regla y efecto (`quiet_hours.delay`: 12). */
+  decisions?: Record<string, number>;
+  /** Solo en `get`: quién espera, por canal, y por qué. */
+  delivery_plan?: { push: ChannelDeliveryPlan; inbox: ChannelDeliveryPlan };
+};
+
+export type HoldReason = "quiet_hours" | "legal_window" | "local_time" | "send_time";
+
+/** «Se retrasa hasta las 08:00 por horas de silencio»: `held_until` + `reason`. */
+export type ChannelDeliveryPlan = {
+  status: "held" | "scheduled" | "in_progress" | "done" | "canceled" | "none";
+  held: number;
+  held_until: string | null;
+  next_at: string | null;
+  reason: HoldReason | null;
+  holds: Array<{ at: string; reason: HoldReason; recipients: number | null }>;
+};
+
+export type PlanRuleName = "kill_switch" | "credentials" | "approval" | "test" | "unsubscribed" | "preferences" | "send_time" | "legal_window" | "quiet_hours" | "ttl_expiry" | "frequency_cap" | "provider_budget" | "no_device" | "audience" | "platform_override";
+
+export type PlanRule = {
+  rule: PlanRuleName;
+  severity: "info" | "warning" | "blocking";
+  effect: "none" | "delay" | "drop" | "skip" | "block";
+  affected: number;
+  /** `quiet_hours.person`, `legal_window.co`, `credentials.apns_missing`, `approval.required`… */
+  reason_code: string;
+  until?: string;
+  windows?: Array<{ start: string; end: string; timezone: string; affected: number }>;
+};
+
+export type PlanReach = {
+  recipients: number;
+  with_push_device: { ios: number; android: number; web: number };
+  inbox_only: number;
+  no_device: number;
+  opted_out_by_preferences: number;
+  held_by_quiet_hours_now: number;
+  capped_now: number;
+  sample: string[];
+};
+
+export type PlanOption = {
+  id: DeliveryDecisionOption;
+  effect: { now: number; later: number; dropped: number; until: string | null };
+  suggested_at?: string;
+  requires?: string[];
+};
+
+/** `notifications.plan`: qué pasaría si se envía ahora (no envía nada). */
+export type NotificationPlan = {
+  object: "notification_plan";
+  plan_hash: string;
+  decision: "send_now" | "send_later" | "partial" | "blocked";
+  summary: {
+    recipients: number;
+    reachable: number;
+    now: number;
+    later: number;
+    dropped: number;
+    first_at: string | null;
+    last_at: string | null;
+    held_until: string | null;
+    main_reason: string | null;
+    test: boolean;
+    exact: boolean;
+    sampled: number;
+    recipients_is_minimum: boolean;
+  };
+  rules: PlanRule[];
+  timeline: Array<{ at: string; recipients: number; channel: "push" | "inbox" }>;
+  reach: PlanReach;
+  options: PlanOption[];
+  recommended: DeliveryDecisionOption;
+  generated_at: string;
+};
+
+/** El cuerpo de un envío sin exigir el contenido (se planea antes de escribirlo). */
+export type NotificationPlanInput = Omit<SendNotificationInput, "title"> & { title?: string };
+
+export type NotificationEstimate = PlanReach & { object: "notification_estimate"; exact: boolean; recipients_is_minimum: boolean; plan_hash: string };
+
+export type InAppEstimateInput = {
+  audience?: { filters: AudienceFilter[] } | null;
+  platforms?: Array<"ios" | "android" | "web"> | null;
+  subscribers?: string[] | null;
+  /** Con `layout` (y `content`), `per_platform` dice además qué diseño se pinta en cada plataforma. */
+  layout?: InAppLayout;
+  content?: Record<string, unknown>;
+  platform_overrides?: InAppPlatformOverrides | null;
+  variants?: Array<Record<string, unknown>> | null;
+};
+
+/** Lo que pinta un cliente: el diseño, cómo se adaptó (`rendered_as`) o por qué no se muestra (`skip`). */
+export type PlatformRendering = { layout: InAppLayout | null; rendered_as: string | null; skip: "unsupported_layout" | "unsupported_content" | null };
+/** Una plataforma en el plan o la estimación: si se apunta, cuántas personas y qué se pinta allí. */
+export type PlatformPlan = {
+  /** Está en `platforms` (o `platforms` es null). */
+  targeted: boolean;
+  eligible: number;
+  /** Las claves de `platform_overrides` que se aplican, de la menos a la más específica (`["mobile", "ios"]`; en variantes también `variant.<clave>`). */
+  overrides: string[];
+  /** In-app: el diseño tras los overrides. */
+  layout?: InAppLayout;
+  /** Lleva HTML en esa plataforma. */
+  html?: boolean;
+  /** Lo que pinta un SDK al día (todos los diseños, bloques y features; con los interruptores de apagado). */
+  rendered?: PlatformRendering;
+  /** Lo que pinta una app que no declara nada (sin `Customy-Client`). */
+  legacy?: PlatformRendering;
+  /** Tarjetas: el `kind` tras los overrides. */
+  kind?: ContentCardKind;
+  variants?: Array<{ id: string; layout?: InAppLayout; kind?: ContentCardKind; overrides: string[]; html?: boolean; rendered?: PlatformRendering; legacy?: PlatformRendering }>;
+};
+export type PerPlatformPlan = { ios: PlatformPlan; android: PlatformPlan; web: PlatformPlan };
+
+export type InAppEstimate = {
+  object: "in_app_estimate";
+  eligible: number;
+  by_platform: { ios: number; android: number; web: number };
+  exact: boolean;
+  sampled: number;
+  /** Por plataforma: elegibilidad y el diseño que se pinta (un Send anterior no lo devuelve). */
+  per_platform?: PerPlatformPlan;
+};
+
+export type InAppPlanInput = Omit<InAppEstimateInput, "platform_overrides"> & {
+  subject?: "in_app" | "content_card";
+  /** Un mensaje o tarjeta existente; lo que venga en el cuerpo lo sustituye. */
+  id?: string;
+  layout?: string;
+  content?: Record<string, unknown>;
+  starts_at?: string;
+  ends_at?: string | null;
+  /** In-app: `InAppPlatformOverrides`; tarjetas: `ContentCardPlatformOverrides`. */
+  platform_overrides?: InAppPlatformOverrides | ContentCardPlatformOverrides | null;
+};
+
+export type InAppPlan = {
+  object: "in_app_plan";
+  plan_hash: string;
+  decision: "send_now" | "send_later" | "blocked";
+  summary: { subject: "in_app" | "content_card"; eligible: number; status: string; approval_required: boolean; approved: boolean; starts_at: string | null; ends_at: string | null; exact: boolean; sampled: number };
+  rules: PlanRule[];
+  timeline: Array<{ at: string; recipients: number; channel: "in_app" | "content_card" }>;
+  reach: Omit<InAppEstimate, "object" | "per_platform">;
+  /** Por plataforma: si se apunta, cuántas personas y qué diseño se pinta (un Send anterior no lo devuelve). */
+  per_platform?: PerPlatformPlan;
+  options: PlanOption[];
+  recommended: null;
+  generated_at: string;
 };
 
 export type CancelNotificationResult = Notification & {
@@ -181,6 +361,10 @@ export type NotificationSettingsInput = {
   api_version?: string | null;
   /** Configuración remota de las apps (`GET /client/config`); lo que no viene queda igual. */
   client_config?: ClientConfigSettingsInput;
+  /** País de la cuenta (ISO 3166-1 alfa-2): el de quien no tiene uno; `CO` activa las ventanas legales. */
+  country?: string | null;
+  /** Ventanas legales de contacto para mercadeo (Ley 2300 en CO); `null` = activas si el país tiene una. */
+  legal_windows?: boolean | null;
 };
 
 export type NotificationSettings = {
@@ -192,6 +376,10 @@ export type NotificationSettings = {
   require_approval?: boolean;
   api_version?: string | null;
   client_config?: ClientConfigSettings;
+  country?: string | null;
+  legal_windows?: boolean | null;
+  legal_windows_active?: boolean;
+  legal_window_presets?: string[];
 };
 
 export type ChannelPreference = { push: boolean; inbox: boolean };
@@ -237,6 +425,10 @@ export type NotificationStats = {
   from: string;
   to: string;
   data: Array<{ day: string; channel: string; event: string; count: number }>;
+  /** Lo que decidió el planificador en el rango, por regla y efecto. */
+  decisions?: Record<string, number>;
+  /** Los envíos de prueba, aparte (nunca entran en `data`). */
+  test?: { notifications: number; data: Array<{ day: string; channel: string; event: string; count: number }> };
 };
 
 export type ConversionInput = {
@@ -403,7 +595,11 @@ export type InAppContent = {
   style?: InAppStyle;
   locales?: Record<string, InAppLocaleContent>;
   blocks?: InAppBlock[];
-  /** Solo en el diseño `html` (≤ 200 KB); la app lo aísla (ver `HTML_CSP` y `BRIDGE_SCRIPT` en `./inbox`). */
+  /**
+   * HTML (≤ 200 KB) en cualquier diseño salvo `tooltip` (422 `html_not_allowed_in_tooltip`); `html`
+   * es el alias de siempre de modal + HTML. Manda sobre `blocks` y título/cuerpo; la app lo aísla
+   * (ver `HTML_CSP`, `BRIDGE_SCRIPT` y `buildHtmlDocument` en `./inbox`).
+   */
   html?: string;
   /** Solo en `tooltip`: la clave del elemento que registró la app; si no está en pantalla se pinta como `slideup`. */
   anchor?: string;
@@ -422,7 +618,46 @@ export type Audience = { filters: AudienceFilter[] };
 /** Condición sobre una propiedad del evento que dispara el mensaje. */
 export type TriggerFilter = { property: string; op: FilterOp; value?: unknown };
 /** Una variante A/B: reparto fijo por persona según `weight`. */
-export type InAppVariant = { id: string; weight: number; layout?: InAppLayout; content: InAppContent };
+export type InAppVariant = {
+  id: string;
+  weight: number;
+  layout?: InAppLayout;
+  content: InAppContent;
+  /** El diseño de la variante por plataforma, aplicado después del del mensaje. */
+  platform_overrides?: InAppPlatformOverrides | null;
+};
+
+/** `ios`, `android`, `web` y `mobile` (= ios y android, salvo que la específica diga otra cosa). */
+export type OverridePlatform = "ios" | "android" | "web" | "mobile";
+/** Un idioma dentro de un override: `null` quita el valor de la base en esa plataforma. */
+export type InAppLocaleOverride = { title?: string | null; body?: string | null; buttons?: InAppButton[] | null; blocks?: InAppBlock[] | null; html?: string | null };
+/**
+ * Contenido parcial de un override. Un campo reemplaza al de la base; `null` lo quita en esa
+ * plataforma; `style` se mezcla clave a clave; `locales` por idioma (`null` quita el idioma). Un
+ * campo traducible (title, body, buttons, blocks, html) puesto arriba lo reemplaza en todos los
+ * idiomas, salvo los que el override traduzca en su `locales`.
+ */
+export type InAppOverrideContent = {
+  title?: string | null;
+  body?: string | null;
+  image?: string | null;
+  buttons?: InAppButton[] | null;
+  blocks?: InAppBlock[] | null;
+  /** Nunca en `tooltip` (422 `html_not_allowed_in_tooltip` en `platform_overrides.<p>.content.html`). */
+  html?: string | null;
+  fallback?: InAppFallbackContent | null;
+  style?: InAppStyle | null;
+  position?: "top" | "bottom" | null;
+  anchor?: string | null;
+  locales?: Record<string, InAppLocaleOverride | null> | null;
+};
+export type InAppPlatformOverride = { layout?: InAppLayout; content?: InAppOverrideContent };
+/**
+ * Un mensaje, un diseño por plataforma (2026-09-28). Al pedirlo: base → `mobile` (ios/android) →
+ * la plataforma → la variante → los overrides de la variante → lo que la app sabe pintar (§8) y
+ * las reglas de HTML (§9). Una plataforma desconocida recibe la base.
+ */
+export type InAppPlatformOverrides = Partial<Record<OverridePlatform, InAppPlatformOverride>>;
 /** Conversión: un evento `custom` con ese nombre dentro de la ventana tras verlo. */
 export type ConversionGoal = { event: string; window_hours: number };
 
@@ -468,6 +703,8 @@ export type InAppMessageInput = {
   conversion?: ConversionGoal | null;
   /** Solo procedencia. */
   template_id?: string | null;
+  /** Un diseño por plataforma (web, ios, android, mobile); editarlo devuelve el mensaje a borrador como cualquier cambio de contenido. */
+  platform_overrides?: InAppPlatformOverrides | null;
 };
 
 export type InAppMessage = ApprovalFields & {
@@ -497,6 +734,7 @@ export type InAppMessage = ApprovalFields & {
   control_pct?: number;
   conversion?: ConversionGoal | null;
   template_id?: string | null;
+  platform_overrides?: InAppPlatformOverrides | null;
 };
 
 /** Resultado de `test`: esa persona lo ve en su próxima lectura durante 24 h, aunque no le toque. */
@@ -524,7 +762,12 @@ export type EngagementTestStats = {
   users: number;
   /** El último evento de prueba (ISO) o null. */
   last_at: string | null;
+  /** Lo mismo por plataforma (`conversions` siempre 0: las pruebas no convierten). Un Send anterior no lo devuelve. */
+  by_platform?: EngagementByPlatform<EngagementTestPlatformCounters>;
 };
+export type EngagementTestPlatformCounters = { impressions: number; clicks: number; clicks_by_action: Record<string, number>; dismissals: number; conversions: number; users: number };
+/** Por plataforma; `unknown` = eventos sin plataforma (SDK anteriores y lo previo al desglose). */
+export type EngagementByPlatform<T> = { ios: T; android: T; web: T; unknown: T };
 
 /** Un evento de quien prueba, del más reciente al más antiguo (`testEvents`). */
 export type EngagementTestEvent = {
@@ -553,6 +796,8 @@ export type EngagementCounters = {
 export type SurveyStats = { responses: number; distribution: Record<string, number> };
 export type EngagementStats = EngagementCounters & {
   by_variant: Record<string, EngagementCounters & { users: number }>;
+  /** Impresiones, clics (por botón), cierres y conversiones por plataforma (un Send anterior no lo devuelve). */
+  by_platform?: EngagementByPlatform<EngagementCounters & { users: number }>;
   control: { conversions: number; users: number };
   survey: Record<string, SurveyStats>;
   /** Apps que no podían pintarlo y no había alternativa. */
@@ -583,6 +828,7 @@ export type InAppTemplateInput = {
   content: InAppContent;
   thumbnail_url?: string | null;
   tags?: string[];
+  platform_overrides?: InAppPlatformOverrides | null;
 };
 export type InAppTemplate = {
   object: "in_app_template";
@@ -593,6 +839,7 @@ export type InAppTemplate = {
   content: InAppContent;
   thumbnail_url: string | null;
   tags: string[];
+  platform_overrides?: InAppPlatformOverrides | null;
   /** Las de Send: solo lectura. */
   builtin: boolean;
   created_at: string;
@@ -623,7 +870,18 @@ export type BrandKit = {
 
 export type ContentCardKind = "classic" | "captioned" | "banner";
 export type ContentCardLocaleContent = { title?: string; body?: string; button_label?: string; url?: string; image?: string };
-export type ContentCardVariant = { id: string; weight: number; kind?: ContentCardKind; title?: string; body?: string; image?: string; url?: string; button_label?: string };
+export type ContentCardVariant = { id: string; weight: number; kind?: ContentCardKind; title?: string; body?: string; image?: string; url?: string; button_label?: string; platform_overrides?: ContentCardPlatformOverrides | null };
+/** Una tarjeta por plataforma (el enlace de la web y el deep link de la app, otra imagen…); `null` quita el valor. */
+export type ContentCardOverride = {
+  kind?: ContentCardKind;
+  title?: string | null;
+  body?: string | null;
+  image?: string | null;
+  url?: string | null;
+  button_label?: string | null;
+  locales?: Record<string, { title?: string | null; body?: string | null; button_label?: string | null; url?: string | null; image?: string | null } | null> | null;
+};
+export type ContentCardPlatformOverrides = Partial<Record<OverridePlatform, ContentCardOverride>>;
 export type ContentCardStatus = InAppStatus;
 
 export type ContentCardInput = {
@@ -649,6 +907,7 @@ export type ContentCardInput = {
   conversion?: ConversionGoal | null;
   status?: ContentCardStatus;
   priority?: number;
+  platform_overrides?: ContentCardPlatformOverrides | null;
 };
 
 export type ContentCard = ApprovalFields & {
@@ -674,6 +933,7 @@ export type ContentCard = ApprovalFields & {
   conversion: ConversionGoal | null;
   status: ContentCardStatus;
   priority: number;
+  platform_overrides?: ContentCardPlatformOverrides | null;
   created_at: string;
   updated_at: string;
 };
@@ -714,7 +974,7 @@ export type TemplatePreview = {
   variables: string[];
 };
 
-export type ClientKillSwitches = { in_app: boolean; content_cards: boolean; html: boolean };
+export type ClientKillSwitches = { in_app: boolean; content_cards: boolean; html: boolean; push?: boolean; inbox?: boolean };
 /** La parte de los ajustes que llega a las apps. */
 export type ClientConfigSettings = {
   poll_seconds: number;
@@ -731,7 +991,8 @@ export type ClientConfigSettingsInput = {
 /** `GET /client/config`: configuración remota; un interruptor de `kill` oculta esa función al momento. */
 export type ClientConfig = ClientConfigSettings & { object?: "client_config"; api_version: string | null };
 
-export type ClientFeature = "variables" | "content_cards" | "bridge_v1" | "push_primer" | (string & {});
+/** `html_layouts`: la app pinta `content.html` en modal, fullscreen, banner, card y slideup (§9; opcional). */
+export type ClientFeature = "variables" | "content_cards" | "bridge_v1" | "push_primer" | "html_layouts" | (string & {});
 /** Lo que la app sabe pintar: viaja en la cabecera `Customy-Client` y Send adapta cada mensaje a ello. */
 export type ClientCapabilities = {
   /** `send/<versión>`; lo pone el SDK. */
@@ -811,6 +1072,8 @@ export type ClientEvent = {
   variant_id?: string | null;
   /** Cómo se pintó el mensaje in-app si Send lo adaptó. */
   rendered_as?: string | null;
+  /** Dónde pasó (`ios`, `android`, `web`): alimenta `by_platform`. El cliente de `./inbox` lo pone solo si conoce su plataforma. */
+  platform?: "ios" | "android" | "web";
   card_id?: string;
   survey_id?: string;
   answers?: SurveyAnswers;

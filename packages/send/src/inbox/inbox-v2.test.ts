@@ -3,14 +3,18 @@ import type { EligibleContentCard, EligibleInAppMessage } from "../engage-types"
 import {
   BRIDGE_SCRIPT,
   buildHtmlDocument,
+  clampHtmlHeight,
   createInAppPresenter,
   createInboxClient,
   CustomySendError,
   DEFAULT_CAPABILITIES,
   HTML_CSP,
+  HTML_LAYOUTS,
+  HTML_LAYOUTS_FEATURE,
   isSafeBridgeUrl,
   matchesFilters,
   parseBridgeMessage,
+  safeAreaStyle,
 } from "./index";
 
 // ── Dobles de prueba ───────────────────────────────────────────────────
@@ -267,6 +271,23 @@ describe("createInboxClient · in-app v2", () => {
     ]);
   });
 
+  it("recibos por plataforma: cada evento lleva la plataforma de la app (o la suya propia) para el by_platform de las métricas", async () => {
+    const { impl, calls } = fakeFetch(() => json({ accepted: 1 }));
+    const web = createInboxClient({ token: async () => "sst_x", fetch: impl, WebSocket: null, platform: "web", events: { maxBatch: 100 } });
+    web.track.inApp({ id: "iam_1", type: "impression" });
+    web.track.card({ id: "cc_1", type: "click" });
+    web.track({ type: "in_app_click", in_app_id: "iam_1", action: "ok", platform: "ios" });
+    await web.flush();
+    const ios = createInboxClient({ token: async () => "sst_x", fetch: impl, WebSocket: null, capabilities: { ...DEFAULT_CAPABILITIES, platform: "android" }, events: { maxBatch: 100 } });
+    ios.track.inApp({ id: "iam_2", type: "dismiss" });
+    await ios.flush();
+    const unknown = createInboxClient({ token: async () => "sst_x", fetch: impl, WebSocket: null, events: { maxBatch: 100 } });
+    unknown.track.inApp({ id: "iam_3", type: "impression" });
+    await unknown.flush();
+    const events = calls.filter((c) => c.path === "/client/events").flatMap((c) => c.body.events);
+    expect(events.map((e: { platform?: string }) => e.platform)).toEqual(["web", "web", "ios", "android", undefined]);
+  });
+
   it("logEvent y submitSurvey rechazan nombres y propiedades fuera de límites con un error tipado", () => {
     const client = createInboxClient({ token: async () => "sst_x", fetch: fakeFetch(() => json({})).impl, WebSocket: null });
     const error = (() => {
@@ -495,5 +516,44 @@ describe("puente HTML", () => {
     expect(buildHtmlDocument("<!DOCTYPE html><html><body>b</body></html>")).toBe(`<!DOCTYPE html><html><head>${inject}</head><body>b</body></html>`);
     expect(buildHtmlDocument("<!doctype html><p>p</p>")).toBe(`<!doctype html>${inject}<p>p</p>`);
     expect(buildHtmlDocument("<header>solo</header>")).toBe(`${inject}<header>solo</header>`);
+  });
+
+  it("§9: márgenes seguros como variables CSS antes del código del autor; html_layouts opcional", () => {
+    const doc = buildHtmlDocument("<!doctype html><html><head><style>body{padding-top:var(--customy-safe-top)}</style></head><body>x</body></html>", { safeArea: { top: 47, bottom: 34, left: 0, right: 0 }, viewportHeight: 844 });
+    expect(doc).toContain("<style>:root{--customy-safe-top:47px;--customy-safe-bottom:34px;--customy-safe-left:0px;--customy-safe-right:0px;--customy-viewport-height:844px}</style>");
+    expect(doc.indexOf("--customy-safe-top:47px")).toBeLessThan(doc.indexOf("padding-top:var"));
+    expect(doc.indexOf("Content-Security-Policy")).toBeLessThan(doc.indexOf("--customy-safe-top:47px"));
+    expect(safeAreaStyle({ safeArea: { top: -3 } })).toBe("<style>:root{--customy-safe-top:0px;--customy-safe-bottom:0px;--customy-safe-left:0px;--customy-safe-right:0px}</style>");
+    expect(HTML_LAYOUTS).toEqual(["modal", "fullscreen", "banner", "card", "slideup"]);
+    expect(DEFAULT_CAPABILITIES.features).not.toContain(HTML_LAYOUTS_FEATURE);
+  });
+
+  it("§9: clampHtmlHeight — banner/slideup ≤ 40 %, card/modal ≤ 80 %, fullscreen lo decide el anfitrión", () => {
+    expect(clampHtmlHeight("banner", 900, 800)).toBe(320);
+    expect(clampHtmlHeight("slideup", 120, 800)).toBe(120);
+    expect(clampHtmlHeight("card", 900, 800)).toBe(640);
+    expect(clampHtmlHeight("modal", 300.4, 800)).toBe(300);
+    expect(clampHtmlHeight("fullscreen", 300, 800)).toBeNull();
+    expect(clampHtmlHeight("card", null, 800)).toBeNull();
+  });
+
+  it("BRIDGE_SCRIPT informa solo el alto del contenido (caja de body + márgenes) y lo vuelve a medir", () => {
+    const posted: string[] = [];
+    let observed: (() => void) | null = null;
+    const body = { getBoundingClientRect: () => ({ height: 120.2 }) };
+    const win: Record<string, unknown> = {
+      parent: { postMessage: (data: string) => posted.push(data) },
+      document: { readyState: "complete", body, addEventListener: () => undefined },
+      getComputedStyle: () => ({ marginTop: "8px", marginBottom: "8px" }),
+      addEventListener: () => undefined,
+      ResizeObserver: class { constructor(cb: () => void) { observed = cb; } observe() {} },
+    };
+    runBridge(win);
+    expect(posted.map((d) => JSON.parse(d))).toEqual([{ customy: 1, type: "resize", height: 137 }]);
+    observed!();
+    expect(posted).toHaveLength(1);
+    body.getBoundingClientRect = () => ({ height: 200 });
+    observed!();
+    expect(JSON.parse(posted[1]!)).toEqual({ customy: 1, type: "resize", height: 216 });
   });
 });

@@ -78,6 +78,9 @@ export const CONNECTABLE_PRODUCT_MANIFESTS: readonly ProductManifest[] = [
   product("customy-engagement", [{ kind: "external_communication", keys: ["notification-delivery"], operations: { allowed: ["deliver_notification"], mode: "exact" } }]),
   // Una referencia de solo lectura a un sitio de Pages del Workspace; no concede edición ni publicación.
   product("customy-pages", [{ kind: "product", resourceIdPattern: "^[0-9]{6,20}$", operations: { allowed: ["read"], mode: "exact", required: false }, maxPerConnection: 1 }], true),
+  // La clave pública identifica el sitio SiteSight enlazado por un administrador del Workspace.
+  // Es una referencia publicable; Access comprueba el producto y el entorno propietario.
+  product("customy-sitesight", [{ kind: "product", keys: ["sitesight-site"], resourceIdPattern: "^ss_pub_[a-z0-9]{2,16}_[a-f0-9]{32}$", operations: { allowed: ["read"], mode: "exact" }, maxPerConnection: 1 }], true),
 ];
 
 export type ConnectedResourceRequest = {

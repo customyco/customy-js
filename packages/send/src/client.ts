@@ -44,6 +44,13 @@ import type {
   SubscriberToken,
   TemplatePreview,
   TemplatePreviewInput,
+  NotificationPlan,
+  NotificationPlanInput,
+  NotificationEstimate,
+  InAppEstimate,
+  InAppEstimateInput,
+  InAppPlan,
+  InAppPlanInput,
 } from "./engage-types";
 import { CustomySendError, sendCall } from "./errors";
 import type {
@@ -271,6 +278,10 @@ export function createSend(options: SendOptions) {
     notifications: {
       /** Se acepta (202) y se entrega en segundo plano; la misma clave devuelve la misma notificación. */
       send: (input: SendNotificationInput, request?: IdempotentOptions) => created<Notification>("/api/notifications", input, request),
+      /** Qué pasaría (reglas, cuándo sale, alcance, opciones) sin enviar nada; su `plan_hash` va en `delivery.decision`. */
+      plan: (input: NotificationPlanInput) => call<NotificationPlan>("POST", "/api/notifications/plan", { body: input }),
+      /** El alcance: personas, dispositivos por plataforma, solo bandeja, excluidas, retenidas y topadas ahora. */
+      estimate: (input: NotificationPlanInput) => call<NotificationEstimate>("POST", "/api/notifications/estimate", { body: input }),
       get: (id: string) => call<Notification>("GET", `/api/notifications/${enc(id)}`),
       stats: (params: { from?: string; to?: string; category?: string; source_product?: string } = {}) => call<NotificationStats>("GET", "/api/notifications/stats", { query: q(params) }),
       /** Conversión atribuida a la notificación (idempotente por `id`). */
@@ -336,6 +347,10 @@ export function createSend(options: SendOptions) {
       get: (id: string) => call<InAppMessage>("GET", `/api/in-app/messages/${enc(id)}`),
       update: (id: string, patch: Partial<InAppMessageInput>, request?: ActorOptions) => call<InAppMessage>("PATCH", `/api/in-app/messages/${enc(id)}`, { body: patch, ...actorHeader(request) }),
       archive: (id: string) => call<{ object: "in_app_message"; id: string; archived: boolean }>("DELETE", `/api/in-app/messages/${enc(id)}`),
+      /** Cuántas personas alcanza una audiencia, por plataforma. */
+      estimate: (input: InAppEstimateInput) => call<InAppEstimate>("POST", "/api/in-app/estimate", { body: input }),
+      /** Plan de un mensaje o tarjeta: interruptores, aprobación, programación y alcance (no cambia nada). */
+      plan: (input: InAppPlanInput) => call<InAppPlan>("POST", "/api/in-app/plan", { body: input }),
       ...lifecycle<InAppMessage, InAppTestResult, InAppStats>("/api/in-app/messages"),
       /** Plantillas: las de Send (`builtin`, solo lectura) y las de la cuenta. */
       templates: {

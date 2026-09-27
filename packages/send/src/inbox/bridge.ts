@@ -54,7 +54,64 @@ export const BRIDGE_SCRIPT = `(function () {
   if (Object.freeze) Object.freeze(api);
   try { Object.defineProperty(w, "customy", { value: api, configurable: false, writable: false, enumerable: true }); }
   catch (e) { w.customy = api; }
+  // El alto del contenido (la caja de <body> más sus márgenes), nunca el scrollHeight del
+  // documento: ese es al menos el de la vista, así que el mensaje solo podría crecer.
+  var d = w.document, last = 0;
+  function report() {
+    var b = d && d.body;
+    if (!b || !b.getBoundingClientRect) return;
+    var cs = w.getComputedStyle ? w.getComputedStyle(b) : null;
+    var h = Math.ceil(b.getBoundingClientRect().height + (cs ? (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0) : 0));
+    if (h > 0 && Math.abs(h - last) > 1) { last = h; api.resize(h); }
+  }
+  function watch() {
+    report();
+    // Imágenes y fuentes tardías cambian el alto: se vuelve a medir (el umbral de 1 px frena los bucles).
+    try { new w.ResizeObserver(report).observe(d.body); } catch (e) {}
+  }
+  if (d) {
+    if (d.readyState === "loading") d.addEventListener("DOMContentLoaded", watch);
+    else watch();
+    w.addEventListener("load", report);
+  }
 })();`;
+
+/** Márgenes seguros del dispositivo, en px (notch, barra de estado, indicador de inicio, barra de navegación). */
+export type SafeAreaInsets = { top: number; bottom: number; left: number; right: number };
+
+/**
+ * Lo que el anfitrión sabe del hueco donde pinta el HTML (§9): se inyecta como
+ * variables CSS en `:root` antes del código del autor:
+ * `--customy-safe-top|-bottom|-left|-right` (px) y `--customy-viewport-height` (px).
+ */
+export type HtmlDocumentOptions = { safeArea?: Partial<SafeAreaInsets>; viewportHeight?: number };
+
+const px = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? `${Math.round(value * 100) / 100}px` : "0px");
+
+/** El `<style>` con las variables de `HtmlDocumentOptions` (vacío sin opciones). */
+export function safeAreaStyle(options: HtmlDocumentOptions = {}): string {
+  const s = options.safeArea ?? {};
+  const vars = [`--customy-safe-top:${px(s.top)}`, `--customy-safe-bottom:${px(s.bottom)}`, `--customy-safe-left:${px(s.left)}`, `--customy-safe-right:${px(s.right)}`];
+  if (typeof options.viewportHeight === "number" && Number.isFinite(options.viewportHeight) && options.viewportHeight > 0) vars.push(`--customy-viewport-height:${px(options.viewportHeight)}`);
+  return `<style>:root{${vars.join(";")}}</style>`;
+}
+
+/** Diseños en los que un HTML puede ir (§9); el `tooltip` no admite HTML. */
+export const HTML_LAYOUTS = ["modal", "fullscreen", "banner", "card", "slideup"] as const;
+/** La función que declara una app que pinta HTML en todos esos diseños (`capabilities.features`). */
+export const HTML_LAYOUTS_FEATURE = "html_layouts";
+
+/**
+ * El alto con el que se pinta un HTML que no es de pantalla completa (§9): el
+ * que pidió `resize`, con tope en el 40 % de la pantalla para banner y slideup
+ * y el 80 % para tarjeta y modal. En `fullscreen` (y en el `html` de siempre sin
+ * `resize`) ocupa lo que el anfitrión decida: devuelve `null`.
+ */
+export function clampHtmlHeight(layout: string, requested: number | null | undefined, screenHeight: number): number | null {
+  if (layout === "fullscreen" || typeof requested !== "number" || !Number.isFinite(requested) || requested <= 0) return null;
+  const cap = layout === "banner" || layout === "slideup" ? 0.4 : 0.8;
+  return Math.max(1, Math.min(Math.round(requested), Math.floor(screenHeight * cap)));
+}
 
 export type BridgeMessage =
   | { customy: 1; type: "close" }
@@ -177,12 +234,13 @@ export function parseBridgeMessage(input: unknown): BridgeMessage | null {
 }
 
 /**
- * El documento que se pinta: la CSP (`HTML_CSP`) y el puente al principio de
+ * El documento que se pinta: la CSP (`HTML_CSP`), las variables de márgenes
+ * seguros (`safeAreaStyle`, si se pasan opciones) y el puente al principio de
  * `<head>`; sin `<head>`, se crea uno tras `<html>` o tras el `<!doctype>`, y
  * si no hay nada de eso, se antepone.
  */
-export function buildHtmlDocument(html: string): string {
-  const inject = `<meta http-equiv="Content-Security-Policy" content="${HTML_CSP}"><script>${BRIDGE_SCRIPT}</script>`;
+export function buildHtmlDocument(html: string, options?: HtmlDocumentOptions): string {
+  const inject = `<meta http-equiv="Content-Security-Policy" content="${HTML_CSP}">${options ? safeAreaStyle(options) : ""}<script>${BRIDGE_SCRIPT}</script>`;
   const source = String(html ?? "");
   const insertAfter = (match: RegExpExecArray | null, text: string) =>
     match ? source.slice(0, match.index + match[0].length) + text + source.slice(match.index + match[0].length) : null;

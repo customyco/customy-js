@@ -1,6 +1,6 @@
 {
   "name": "@customyai/customy-access",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "Deprecated: use @customyai/client, @customyai/web, @customyai/server and @customyai/access. Adapter of the Customy Access SDK kept for one major cycle (the admin client CustomyAccess stays here, frozen).",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",

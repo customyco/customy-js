@@ -404,7 +404,7 @@ export type InAppContent = {
   style?: InAppStyle;
   locales?: Record<string, InAppLocaleContent>;
   blocks?: InAppBlock[];
-  /** Solo en el diseño `html` (≤ 200 KB); la app lo aísla (ver `HTML_CSP` y `BRIDGE_SCRIPT` en `./inbox`). */
+  /** HTML (≤ 200 KB) en cualquier diseño salvo `tooltip`; `html` = modal + HTML. La app lo aísla (ver `HTML_CSP`, `BRIDGE_SCRIPT` y `buildHtmlDocument` en `./inbox`). */
   html?: string;
   /** Solo en `tooltip`: la clave del elemento que registró la app; si no está en pantalla se pinta como `slideup`. */
   anchor?: string;
@@ -690,7 +690,8 @@ export type ClientConfigSettingsInput = {
 /** `GET /client/config`: configuración remota; un interruptor de `kill` oculta esa función al momento. */
 export type ClientConfig = ClientConfigSettings & { object?: "client_config"; api_version: string | null };
 
-export type ClientFeature = "variables" | "content_cards" | "bridge_v1" | "push_primer" | (string & {});
+/** `html_layouts`: la app pinta `content.html` en modal, fullscreen, banner, card y slideup (§9; opcional). */
+export type ClientFeature = "variables" | "content_cards" | "bridge_v1" | "push_primer" | "html_layouts" | (string & {});
 /** Lo que la app sabe pintar: viaja en la cabecera `Customy-Client` y Send adapta cada mensaje a ello. */
 export type ClientCapabilities = {
   /** `send/<versión>`; lo pone el SDK. */

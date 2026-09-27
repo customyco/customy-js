@@ -151,16 +151,16 @@ importers:
   packages/customy-sdk:
     dependencies:
       '@customyai/customy-access':
-        specifier: ^0.8.3
+        specifier: ^0.8.4
         version: link:../customy-access
       '@customyai/links-sdk':
         specifier: ^0.3.1
         version: link:../links-sdk
       '@customyai/sdk':
-        specifier: ^0.4.0
+        specifier: ^0.6.0
         version: link:../sdk
       '@customyai/send-sdk':
-        specifier: ^1.5.1
+        specifier: ^1.6.2
         version: link:../send-sdk
     devDependencies:
       '@types/node':
@@ -260,8 +260,11 @@ importers:
         specifier: ^0.1.1
         version: link:../links
       '@customyai/send':
-        specifier: ^0.3.1
+        specifier: ^0.6.0
         version: link:../send
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
     devDependencies:
       tsup:
         specifier: ^8.0.0
@@ -301,7 +304,7 @@ importers:
         specifier: ^0.2.0
         version: link:../core
       '@customyai/send':
-        specifier: ^0.3.1
+        specifier: ^0.6.0
         version: link:../send
     devDependencies:
       '@types/node':
@@ -349,7 +352,7 @@ importers:
         version: 8.20.0
     devDependencies:
       '@customyai/customy-sdk':
-        specifier: ^0.4.2
+        specifier: ^0.4.7
         version: link:../customy-sdk
       '@types/node':
         specifier: ^20.14.2

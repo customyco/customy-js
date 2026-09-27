@@ -1575,6 +1575,12 @@ class M2MClient extends BaseClient {
         machineIdentityId?: string;
         ownerService?: string;
         allowedAudiences?: string[];
+        /**
+         * Obligatorio (≥ 10 caracteres) solo cuando el secreto de administración
+         * emite una clave que excede el manifiesto `app/v1` del entorno; queda
+         * en la auditoría. Dentro del manifiesto se ignora.
+         */
+        reason?: string;
     }): Promise<{
         id: string;
         rawKey: string;
