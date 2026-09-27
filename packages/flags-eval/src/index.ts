@@ -79,6 +79,12 @@ export interface FlagDefinition {
   targetingRules?: FlagTargetingRule[];
   prerequisites?: FlagPrerequisite[];
   salt?: string;
+  /**
+   * Fraction (0–1] of units whose impressions and conversions are recorded.
+   * Sampling is by unit, so a unit is always in or always out and an
+   * experiment on the sample stays unbiased. Absent means 1.
+   */
+  impressionSampleRate?: number;
 }
 
 export interface SegmentDefinition {

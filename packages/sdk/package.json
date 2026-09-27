@@ -68,7 +68,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/customy-access": "^0.6.0",
+    "@customyai/customy-access": "^0.7.0",
     "@customyai/links-sdk": "^0.2.0",
     "@customyai/send-sdk": "^1.1.0"
   },
