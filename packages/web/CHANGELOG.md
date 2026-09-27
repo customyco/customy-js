@@ -1,5 +1,11 @@
 # @customyai/web
 
+## 0.1.1
+
+### Patch Changes
+
+- Las barras finales de URLs y rutas se quitan en tiempo lineal. La expresión `/\/+$/` era cuadrática con entradas de muchas `/` (CodeQL `js/polynomial-redos`).
+
 ## 0.1.0
 
 ### Minor Changes

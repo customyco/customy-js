@@ -4,6 +4,7 @@
  * cabeceras reenviadas, nunca de un host interno (localhost, 0.0.0.0…).
  */
 import { CustomySdkError } from "@customyai/core";
+import { trimTrailingSlashes } from "./trim";
 
 /** Ámbito de la app en Access: lo que identifica su entorno. */
 export interface CustomyScopeOptions {
@@ -86,7 +87,7 @@ export function accessBaseUrl(accessUrl: string | undefined): string {
     if (url.username || url.password || (url.protocol !== "https:" && !(url.protocol === "http:" && loopback))) {
         throw new CustomySdkError({ code: "SDK_ACCESS_URL_INVALID", service: "access", message: "accessUrl must be https (http only for loopback)" });
     }
-    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+    return `${url.origin}${trimTrailingSlashes(url.pathname)}`;
 }
 
 export function searchParam(url: URL, names: readonly string[], fallback = ""): string {

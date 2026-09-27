@@ -108,7 +108,7 @@ importers:
         specifier: ^0.1.0
         version: link:../access
       '@customyai/client':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: link:../client
       '@customyai/core':
         specifier: ^0.1.0
@@ -117,7 +117,7 @@ importers:
         specifier: ^0.1.0
         version: link:../server
       '@customyai/web':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: link:../web
       jose:
         specifier: ^5.2.2
@@ -151,7 +151,7 @@ importers:
   packages/customy-sdk:
     dependencies:
       '@customyai/customy-access':
-        specifier: ^0.8.0
+        specifier: ^0.8.1
         version: link:../customy-access
       '@customyai/links-sdk':
         specifier: ^0.3.0
@@ -349,7 +349,7 @@ importers:
         version: 8.20.0
     devDependencies:
       '@customyai/customy-sdk':
-        specifier: ^0.3.0
+        specifier: ^0.3.1
         version: link:../customy-sdk
       '@types/node':
         specifier: ^20.14.2

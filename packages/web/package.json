@@ -1,6 +1,6 @@
 {
   "name": "@customyai/web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Customy same-origin session handlers over the standard Request and Response: auth proxy, social sign-in, sign-out, impersonation callback, server session, route protection, cookie names and local session token verification. Node and edge; never in a browser bundle.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",

@@ -111,13 +111,20 @@ export interface CustomyClientOptions {
 
 const FORBIDDEN_OPTIONS = ["apiKey", "adminSecret", "bearerToken", "sessionToken", "clientSecret", "secretKey", "internalKey"];
 
+/** Quita las barras finales en tiempo lineal (sin la regex `/\/+$/`, cuadrática con muchas `/`). */
+function trimTrailingSlashes(value: string): string {
+    let end = value.length;
+    while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+    return value.slice(0, end);
+}
+
 function isBrowser(): boolean {
     return typeof (globalThis as { document?: unknown }).document !== "undefined";
 }
 
 /** Rutas relativas en el navegador (mismo origen); la base configurada fuera de él. */
 export function browserAuthBase(baseUrl: string | undefined): string {
-    return isBrowser() ? "" : (baseUrl ?? "").replace(/\/+$/, "");
+    return isBrowser() ? "" : trimTrailingSlashes(baseUrl ?? "");
 }
 
 export function createSocialSignInUrl(provider: string, options: SocialSignInUrlOptions = {}): string {

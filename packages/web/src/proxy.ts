@@ -21,6 +21,7 @@ import {
     type CustomyScopeOptions,
     type RequestLike,
 } from "./origin";
+import { trimTrailingSlashes } from "./trim";
 
 export interface CustomyAuthProxyOptions extends CustomyScopeOptions, CustomyOriginOptions {
     /** URL de la API de Access (https). Obligatoria: el SDK no adivina hosts. */
@@ -57,7 +58,7 @@ function fetchOf(options: { fetch?: typeof fetch }): typeof fetch {
 /** Segmentos tras `basePath` (`/api/auth/sign-in/email` → `sign-in/email`). */
 export function authPathFromUrl(url: string, basePath = "/api/auth"): string[] {
     const pathname = new URL(url).pathname;
-    const base = basePath.replace(/\/+$/, "");
+    const base = trimTrailingSlashes(basePath);
     if (pathname !== base && !pathname.startsWith(`${base}/`)) return [];
     return pathname.slice(base.length).split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
 }

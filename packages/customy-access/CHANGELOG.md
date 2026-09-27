@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/web@0.1.1
+  - @customyai/client@0.1.1
+
 ## 0.8.0
 
 ### Minor Changes
