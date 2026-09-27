@@ -118,3 +118,46 @@ describe("createCustomy", () => {
         await expect(customy.product("crm").get("/v1/contacts")).rejects.toMatchObject({ status: 401, code: "SDK_MACHINE_TOKEN_INVALID_CLIENT" });
     });
 });
+
+describe("scopes: manifiesto y Access perezoso", () => {
+    const scopeOf = (call: Call) => new URLSearchParams(String(call.init.body)).get("scope");
+    const audienceOf = (call: Call) => new URLSearchParams(String(call.init.body)).get("audience");
+
+    it("sin scopes, access.users.contact pide users:contact:read (no falla con el mínimo)", async () => {
+        const { calls, fetchImpl } = platform({
+            "https://access.fixture.invalid/api/v1/users/": { userId: "u1", email: "ana@acme.test", emailVerified: true, name: null, locale: null },
+            "https://access.fixture.invalid/api/v1/me": { entitlements: {} },
+        });
+        const customy = await createCustomy({ ...credentials, fetch: fetchImpl, environmentId: "env_fixture" });
+        await customy.access.users.contact("u1");
+        await customy.access.me();
+        expect(tokenRequests(calls).map(scopeOf)).toEqual(["users:contact:read", "capabilities:read"]);
+    });
+
+    it("el manifiesto da los scopes de cada producto (por audiencia o clave) y `scopes` manda sobre él", async () => {
+        const { calls, fetchImpl } = platform({ "https://send.fixture.invalid": { id: "eml_1" }, "https://billing.fixture.invalid": { accepted: 1, events: [] } });
+        const manifest = {
+            products: [
+                { product: "customy-send", scopes: ["send:emails:send", "send:templates:read"] },
+                { product: "billing", scopes: ["billing:usage:report"] },
+                { product: "customy-unknown", scopes: ["x:y"] },
+            ],
+        };
+        const customy = await createCustomy({ ...credentials, fetch: fetchImpl, manifest, scopes: { billing: ["billing:usage:report", "billing:read"] } });
+        await customy.send.emails.send({ templateId: "welcome", to: "ana@acme.test" });
+        await customy.billing.usage.report([{ meter: "m", quantity: 1, idempotencyKey: "k-1" }]);
+        expect(tokenRequests(calls).map((call) => [audienceOf(call), scopeOf(call)])).toEqual([
+            ["customy-send", "send:emails:send send:templates:read"],
+            ["customy-billing", "billing:usage:report billing:read"],
+        ]);
+    });
+
+    it("scopesFromManifest ignora lo que el discovery no publica", async () => {
+        const { scopesFromManifest } = await import("./index");
+        const { fetchImpl } = platform();
+        const customy = await createCustomy({ ...credentials, fetch: fetchImpl });
+        expect(scopesFromManifest({ products: [{ product: "customy-crm", scopes: ["crm:read"] }, { product: "voice", scopes: ["v:1"] }, { product: "customy-send", scopes: [] }] }, customy.platform))
+            .toEqual({ crm: ["crm:read"] });
+        expect(scopesFromManifest(undefined, customy.platform)).toEqual({});
+    });
+});

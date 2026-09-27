@@ -54,7 +54,21 @@ export interface CustomyActor {
 }
 
 export interface SignInResult {
+    /** Mensaje para personas (el de Access, o uno del SDK). */
     error?: string;
+    /**
+     * Estado HTTP del fallo: 401/403 credenciales o cuenta, 4xx petición,
+     * 429 límite, 5xx/502 servicio caído; 408 plazo agotado y 0 sin red.
+     */
+    status?: number;
+    /**
+     * Código estable del fallo, el del sobre `{ error: { code } }` de Access
+     * (p. ej. `INVALID_EMAIL_OR_PASSWORD`) o uno del SDK: `SDK_TIMEOUT`,
+     * `SDK_NETWORK_ERROR`, `HTTP_<estado>` si la respuesta no trae código.
+     */
+    code?: string;
+    /** `true` si el fallo es del servicio (red, plazo, 429 o 5xx) y reintentar puede servir. */
+    retryable?: boolean;
     url?: string;
     redirect?: boolean;
     twoFactorRedirect?: boolean;
@@ -195,13 +209,38 @@ function scopeHeaders(options: ScopedAuthOptions): Record<string, string> {
         headers["x-env-id"] = options.environmentId;
         headers["x-environment-id"] = options.environmentId;
     }
-    if (options.organizationSlug) headers["x-organization-id"] = options.organizationSlug;
+    if (options.organizationSlug) {
+        // Transición: el slug viaja en `x-organization-slug` y en la heredada `x-organization-id`.
+        headers["x-organization-slug"] = options.organizationSlug;
+        headers["x-organization-id"] = options.organizationSlug;
+    }
     return headers;
 }
 
-function errorMessage(data: unknown, fallback: string): string {
+const ERROR_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/;
+
+/** Fallo de una acción de login: texto, estado y código, leyendo cualquier forma de error. */
+export interface AuthActionFailure {
+    error: string;
+    status: number;
+    code: string;
+    retryable: boolean;
+}
+
+/**
+ * Lee el error de una respuesta de `/api/auth/*` en cualquiera de sus formas
+ * (`{ error: { code, message } }`, `{ code, message }`, `{ error: "texto" }`).
+ */
+export function authFailureFromResponse(status: number, data: unknown): AuthActionFailure {
     const envelope = readErrorEnvelope(data);
-    return envelope.message ?? envelope.code ?? fallback;
+    const codeIsCode = envelope.code !== undefined && ERROR_CODE.test(envelope.code);
+    const code = codeIsCode ? envelope.code! : `HTTP_${status}`;
+    const error = envelope.message ?? envelope.code ?? `HTTP ${status}`;
+    return { error, status, code, retryable: status === 408 || status === 429 || status >= 500 };
+}
+
+function failureFields(failure: AuthActionFailure): Pick<SignInResult, "error" | "status" | "code" | "retryable"> {
+    return { error: failure.error, status: failure.status, code: failure.code, retryable: failure.retryable };
 }
 
 function userQuery(params: Record<string, string | undefined>): string {
@@ -234,15 +273,24 @@ export function createCustomyClient(options: CustomyClientOptions = {}) {
         return fetchImpl(`${base()}${path}`, { ...rest, headers, credentials: "include", cache: "no-store", signal: init.signal ?? AbortSignal.timeout(timeoutMs ?? timeout) });
     }
 
-    async function authAction(path: string, body: unknown, fallback: string, scope?: ScopedAuthOptions, timeoutMs?: number): Promise<{ ok: boolean; data: Record<string, unknown>; error?: string }> {
+    type AuthActionResult =
+        | { ok: true; data: Record<string, unknown> }
+        | { ok: false; data: Record<string, unknown>; error: string; failure: AuthActionFailure };
+
+    async function authAction(path: string, body: unknown, fallback: string, scope?: ScopedAuthOptions, timeoutMs?: number): Promise<AuthActionResult> {
         try {
             const res = await send(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body), scope, timeoutMs });
             const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-            if (!res.ok) return { ok: false, data, error: errorMessage(data, `HTTP ${res.status}`) };
+            if (!res.ok) {
+                const failure = authFailureFromResponse(res.status, data);
+                return { ok: false, data, error: failure.error, failure };
+            }
             return { ok: true, data: data ?? {} };
         } catch (error) {
-            if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) return { ok: false, data: {}, error: "Request timed out. Try again." };
-            return { ok: false, data: {}, error: error instanceof Error ? error.message : fallback };
+            const failure: AuthActionFailure = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")
+                ? { error: "Request timed out. Try again.", status: 408, code: "SDK_TIMEOUT", retryable: true }
+                : { error: error instanceof Error ? error.message : fallback, status: 0, code: "SDK_NETWORK_ERROR", retryable: true };
+            return { ok: false, data: {}, error: failure.error, failure };
         }
     }
 
@@ -392,7 +440,7 @@ export function createCustomyClient(options: CustomyClientOptions = {}) {
         async signInWithEmail(email: string, password: string, callbackURLOrOptions?: string | ScopedAuthOptions): Promise<SignInResult> {
             const scope = typeof callbackURLOrOptions === "string" ? { callbackURL: callbackURLOrOptions } : (callbackURLOrOptions ?? {});
             const result = await authAction("/api/auth/sign-in/email", { email, password, ...(scope.callbackURL ? { callbackURL: scope.callbackURL } : {}) }, "Sign-in failed", scope, options.signInTimeoutMs ?? 30_000);
-            if (!result.ok) return { error: result.error };
+            if (!result.ok) return failureFields(result.failure);
             if (result.data.twoFactorRedirect) return { twoFactorRedirect: true };
             return { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined };
         },
@@ -400,32 +448,32 @@ export function createCustomyClient(options: CustomyClientOptions = {}) {
         async signUp(name: string, email: string, password: string, callbackURLOrOptions?: string | ScopedAuthOptions): Promise<SignInResult> {
             const scope = typeof callbackURLOrOptions === "string" ? { callbackURL: callbackURLOrOptions } : (callbackURLOrOptions ?? {});
             const result = await authAction("/api/auth/sign-up/email", { name, email, password, ...(scope.callbackURL ? { callbackURL: scope.callbackURL } : {}) }, "Sign-up failed", scope, options.signInTimeoutMs ?? 30_000);
-            return result.ok ? { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined } : { error: result.error };
+            return result.ok ? { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined } : failureFields(result.failure);
         },
 
         async signInWithMagicLink(email: string, callbackURL?: string): Promise<SignInResult> {
-            const result = await authAction("/api/auth/magic-link/send", { email, ...(callbackURL ? { callbackURL } : {}) }, "Failed to send magic link");
-            return result.ok ? { success: true } : { error: result.error };
+            const result = await authAction("/api/auth/sign-in/magic-link", { email, ...(callbackURL ? { callbackURL } : {}) }, "Failed to send magic link");
+            return result.ok ? { success: true } : failureFields(result.failure);
         },
 
         async enableMFA(password: string): Promise<{ error?: string; secretURI?: string; QRCode?: string; backupCodes?: string[] }> {
             const result = await authAction("/api/auth/two-factor/totp/generate", { password }, "Failed to enable MFA");
-            return result.ok ? result.data as { secretURI?: string; QRCode?: string; backupCodes?: string[] } : { error: result.error };
+            return result.ok ? result.data as { secretURI?: string; QRCode?: string; backupCodes?: string[] } : failureFields(result.failure);
         },
 
         async verifyMFA(code: string): Promise<SignInResult> {
             const result = await authAction("/api/auth/two-factor/verify", { code }, "Verification failed");
-            return result.ok ? { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined } : { error: result.error };
+            return result.ok ? { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined } : failureFields(result.failure);
         },
 
         async registerPasskey(name?: string): Promise<{ error?: string; success?: boolean } & Record<string, unknown>> {
             const result = await authAction("/api/auth/passkey/generate-options", name ? { name } : {}, "Failed to register passkey");
-            return result.ok ? result.data : { error: result.error };
+            return result.ok ? result.data : failureFields(result.failure);
         },
 
         async signInWithPasskey(): Promise<SignInResult> {
             const result = await authAction("/api/auth/passkey/authenticate", undefined, "Passkey auth failed");
-            return result.ok ? { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined } : { error: result.error };
+            return result.ok ? { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined } : failureFields(result.failure);
         },
 
         async setActiveOrganization(organizationId: string): Promise<boolean> {

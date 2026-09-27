@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.3
+
+### Patch Changes
+
+- - `./nextjs` `getServerSession` vuelve a aplicar sola la renovación de sesión de Access con `cookies().set` donde se puede (Route Handlers y Server Actions).
+  - `./server` conserva la semántica de 0.x: con Access sin responder, el verificador sigue devolviendo `null`.
+- Dependencias actualizadas:
+  - @customyai/access@0.2.0
+  - @customyai/client@0.2.0
+  - @customyai/core@0.2.0
+  - @customyai/server@0.2.0
+  - @customyai/web@0.2.0
+
 ## 0.8.2
 
 ### Patch Changes

@@ -23,7 +23,8 @@ const { allowed } = await customy.access.capabilities.check("reports.export", { 
 await customy.product("crm").get("/v1/contacts");
 ```
 
-- **Scopes**: por clave de producto (`scopes: { send: ["send:emails:send"] }`); sin entrada, los mínimos de cada paquete.
+- **Scopes**: por clave de producto (`scopes: { send: ["send:emails:send"] }`). Con `manifest` (el `customy.app.json` de la app), los scopes de cada producto salen de él (`scopes` manda sobre el manifiesto). Sin nada, los de cada paquete: Access pide en cada método el scope que necesita (`access.users.contact` → `users:contact:read`) y, si la credencial no lo tiene, el error lo nombra (`requiredScope`).
+- **Red privada**: `allowPrivateHttp` permite `http://` a hosts privados (nunca públicos); lo recomendado es el nombre público https.
 - **Perezoso**: ningún cliente pide token hasta su primera llamada; cada cliente se crea una vez.
 - **Discovery**: `platform` evita volver a pedirlo (por ejemplo, entre invocaciones de una función sin estado).
 - **Solo servidor**: lleva el secreto de la app; un bundle de navegador no resuelve el paquete (`browser: null`). En el navegador van `@customyai/client` y `@customyai/data` con write key.

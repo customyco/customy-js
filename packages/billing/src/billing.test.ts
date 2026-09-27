@@ -67,3 +67,12 @@ describe("@customyai/billing", () => {
         expect(calls).toHaveLength(1);
     });
 });
+
+describe("plazo por llamada", () => {
+    it("report acepta timeoutMs y corta aunque el cliente espere más", async () => {
+        const fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))))) as typeof globalThis.fetch;
+        const billing = createBilling({ baseUrl: BASE, accessToken: "tok", fetch, timeoutMs: 60_000, retry: false });
+        await expect(billing.usage.report([{ meter: "m", quantity: 1, idempotencyKey: "k" }], { timeoutMs: 5 })).rejects.toMatchObject({ code: "SDK_TIMEOUT" });
+    });
+});

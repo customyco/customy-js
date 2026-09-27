@@ -6,6 +6,7 @@
  * y en cualquier framework cuyas rutas reciban una `Request` y devuelvan una
  * `Response`.
  */
+import { readErrorEnvelope } from "@customyai/core";
 import { ACCESS_PASSKEY_COOKIE, expireCookie, getSetCookieHeaders, parseCookieHeader, scopeSetCookieToHost, serializeCookie } from "./cookies";
 import { fixedAuthScopeConfigured, matchesFixedAuthScope, sessionMatchesFixedScope } from "./auth-scope";
 import {
@@ -28,7 +29,18 @@ export interface CustomyAuthProxyOptions extends CustomyScopeOptions, CustomyOri
     accessUrl: string;
     /** Ruta de la app donde se montan los handlers (por defecto `/api/auth`). */
     basePath?: string;
+    /** Destino tras el login social si la petición no trae uno válido (por defecto `/`). */
     defaultCallbackPath?: string;
+    /**
+     * Rutas permitidas como destino tras el login social (`?callbackURL=`).
+     * Cada entrada es una ruta exacta (`/app`) que también admite sus
+     * subrutas (`/app/…`). Sin lista, cualquier ruta del origen público. Un
+     * destino fuera de la lista (o de otro origen) se sustituye por
+     * `defaultCallbackPath`.
+     */
+    allowedCallbackPaths?: readonly string[];
+    /** Validador propio del destino tras el login, ya resuelto en el origen público. Se suma a `allowedCallbackPaths`. */
+    isCallbackAllowed?: (url: URL) => boolean;
     loginPath?: string;
     /** Apps externas: fija la identidad a la configuración del servidor. */
     enforceTenantScope?: boolean;
@@ -36,10 +48,17 @@ export interface CustomyAuthProxyOptions extends CustomyScopeOptions, CustomyOri
     allowedAuthPaths?: readonly string[];
     /**
      * Protección CSRF de las peticiones que cambian estado (por defecto true):
-     * `Origin` debe ser el origen público y `Sec-Fetch-Site` no puede ser
-     * `cross-site`.
+     * `Sec-Fetch-Site: cross-site` se rechaza; con `Origin`, debe ser el origen
+     * público; sin `Origin`, solo pasa si `Sec-Fetch-Site` es `same-origin` o
+     * `none`, o si `Referer` es del origen público. Ver `crossSiteRequestRejected`.
      */
     csrfProtection?: boolean;
+    /**
+     * Respuestas de error de Access con el sobre de Customy
+     * `{ error: { code, message } }` (por defecto true). Conserva además `code`
+     * y `message` planos para quien leía el formato anterior.
+     */
+    normalizeErrors?: boolean;
     /** Límite de espera a Access, en ms (por defecto 15 s). */
     timeoutMs?: number;
     fetch?: typeof fetch;
@@ -71,15 +90,35 @@ function validPath(path: readonly string[]): boolean {
     return path.length > 0 && path.every((segment) => segment !== "" && segment !== "." && segment !== ".." && !/[/\\?#%]/.test(segment));
 }
 
+function originOf(value: string | null): string | null {
+    if (!value) return null;
+    try {
+        const origin = new URL(value).origin;
+        return origin === "null" ? null : origin;
+    } catch {
+        return null;
+    }
+}
+
 /**
- * Comprobación CSRF para métodos que cambian estado. Un navegador siempre
- * envía `Origin` en un POST cross-origin y `Sec-Fetch-Site` cuando lo conoce.
+ * Comprobación CSRF para métodos que cambian estado (`true` = rechazar). Una
+ * mutación con cookie tiene que acreditar que sale del origen público:
+ *  - `Sec-Fetch-Site: cross-site` se rechaza siempre;
+ *  - con `Origin`, debe ser exactamente el origen público (`null` no vale);
+ *  - sin `Origin`, solo pasa si `Sec-Fetch-Site` es `same-origin` o `none`
+ *    (el navegador lo sabe) o si `Referer` es del origen público.
+ * Una petición que no acredita nada (sin `Origin`, `Sec-Fetch-Site` ni
+ * `Referer`) se rechaza: un cliente de servidor debe enviar `Origin`.
  */
 export function crossSiteRequestRejected(request: RequestLike, options?: CustomyOriginOptions): boolean {
     if (SAFE_METHODS.includes(request.method.toUpperCase())) return false;
-    if (request.headers.get("sec-fetch-site") === "cross-site") return true;
+    const fetchSite = request.headers.get("sec-fetch-site")?.trim().toLowerCase() ?? null;
+    if (fetchSite === "cross-site") return true;
+    const publicOrigin = getPublicOrigin(request, options);
     const origin = request.headers.get("origin");
-    return origin !== null && origin !== getPublicOrigin(request, options);
+    if (origin !== null) return origin !== publicOrigin;
+    if (fetchSite === "same-origin" || fetchSite === "none") return false;
+    return originOf(request.headers.get("referer")) !== publicOrigin;
 }
 
 function forwardHeaders(request: RequestLike, options: CustomyAuthProxyOptions): Headers {
@@ -115,6 +154,33 @@ function errorResponse(code: string, status: number): Response {
     return jsonResponse({ error: { code, message: code.toLowerCase().replace(/_/g, " ") } }, status);
 }
 
+const ERROR_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/;
+const MAX_ERROR_BODY_BYTES = 65_536;
+
+/**
+ * Sobre de error de Customy a partir del cuerpo de Access, sea cual sea su
+ * forma (`{ error: { code, message } }`, `{ code, message }` o
+ * `{ error: "texto" }`). Un «código» que es texto libre pasa a ser el mensaje.
+ */
+export function customyErrorEnvelope(body: unknown, status: number): { error: { code: string; message: string; requestId?: string }; code: string; message: string } {
+    const envelope = readErrorEnvelope(body);
+    const codeIsCode = envelope.code !== undefined && ERROR_CODE.test(envelope.code);
+    const code = codeIsCode ? envelope.code! : `HTTP_${status}`;
+    const message = envelope.message ?? (!codeIsCode && envelope.code ? envelope.code : code.toLowerCase().replace(/_/g, " "));
+    return { error: { code, message, ...(envelope.requestId ? { requestId: envelope.requestId } : {}) }, code, message };
+}
+
+async function normalizedErrorBody(upstream: Response): Promise<string | null> {
+    if (upstream.status < 400 || !(upstream.headers.get("content-type") ?? "").includes("json")) return null;
+    const declared = Number(upstream.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > MAX_ERROR_BODY_BYTES) return null;
+    const text = await upstream.clone().text().catch(() => null);
+    if (text === null || text.length > MAX_ERROR_BODY_BYTES) return null;
+    let body: unknown = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+    return JSON.stringify(customyErrorEnvelope(body, upstream.status));
+}
+
 async function readLimitedBody(request: Request, limit: number): Promise<string | null> {
     const reader = request.body?.getReader();
     if (!reader) return "";
@@ -143,8 +209,17 @@ async function readLimitedBody(request: Request, limit: number): Promise<string 
     return new TextDecoder().decode(bytes);
 }
 
-async function proxyAuthRequest(request: Request, path: string[], options: CustomyAuthProxyOptions): Promise<Response> {
-    if (!validPath(path)) return errorResponse("AUTH_PATH_NOT_FOUND", 404);
+/**
+ * Rutas viejas que los clientes anteriores llamaban con otro nombre: el
+ * enlace mágico se pide en `sign-in/magic-link` (antes `magic-link/send`).
+ */
+const AUTH_PATH_ALIASES: Readonly<Record<string, readonly string[]>> = {
+    "magic-link/send": ["sign-in", "magic-link"],
+};
+
+async function proxyAuthRequest(request: Request, requestedPath: string[], options: CustomyAuthProxyOptions): Promise<Response> {
+    if (!validPath(requestedPath)) return errorResponse("AUTH_PATH_NOT_FOUND", 404);
+    const path = request.method === "POST" ? [...(AUTH_PATH_ALIASES[requestedPath.join("/")] ?? requestedPath)] : requestedPath;
     const joined = path.join("/");
     if (options.allowedAuthPaths && !options.allowedAuthPaths.includes(joined)) return errorResponse("AUTH_PATH_NOT_ALLOWED", 404);
     if (options.csrfProtection !== false && crossSiteRequestRejected(request, options)) return errorResponse("AUTH_ORIGIN_MISMATCH", 403);
@@ -198,6 +273,12 @@ async function proxyAuthRequest(request: Request, path: string[], options: Custo
     });
     copySetCookies(headers, upstream.headers, getPublicProto(request, options) === "https");
     applyNoStore(headers);
+    const normalized = options.normalizeErrors === false ? null : await normalizedErrorBody(upstream);
+    if (normalized !== null) {
+        await upstream.body?.cancel().catch(() => undefined);
+        headers.set("content-type", "application/json");
+        return new Response(normalized, { status: upstream.status, statusText: upstream.statusText, headers });
+    }
     return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers });
 }
 
@@ -205,7 +286,7 @@ async function startSocialAuth(request: Request, provider: string, options: Cust
     const publicOrigin = getPublicOrigin(request, options);
     const url = new URL(request.url);
     const loginPath = options.loginPath || "/login";
-    const callbackURL = safeCallbackUrl(url.searchParams.get("callbackURL") || options.defaultCallbackPath || "/", publicOrigin);
+    const callbackURL = resolveCallbackUrl(url.searchParams.get("callbackURL"), publicOrigin, options);
     let upstream: Response;
     try {
         const headers = forwardHeaders(request, options);
@@ -247,6 +328,44 @@ export function safeCallbackUrl(value: string, publicOrigin: string): string {
     } catch {
         return `${publicOrigin}/`;
     }
+}
+
+/** ¿Está `pathname` en la lista? Cada entrada admite la ruta exacta y sus subrutas. */
+export function callbackPathAllowed(pathname: string, allowed: readonly string[]): boolean {
+    return allowed.some((entry) => {
+        const base = trimTrailingSlashes(entry) || "/";
+        if (base === "/") return true;
+        return pathname === base || pathname.startsWith(`${base}/`);
+    });
+}
+
+/**
+ * Destino tras el login social. El pedido (`?callbackURL=`) solo se usa si
+ * resuelve al origen público y pasa `allowedCallbackPaths` e
+ * `isCallbackAllowed`; si no, manda la configuración de la app
+ * (`defaultCallbackPath`, o `/`).
+ */
+export function resolveCallbackUrl(
+    requested: string | null | undefined,
+    publicOrigin: string,
+    options: Pick<CustomyAuthProxyOptions, "defaultCallbackPath" | "allowedCallbackPaths" | "isCallbackAllowed"> = {},
+): string {
+    const fallback = safeCallbackUrl(options.defaultCallbackPath || "/", publicOrigin);
+    if (!requested) return fallback;
+    let resolved: URL;
+    try {
+        resolved = new URL(requested, publicOrigin);
+    } catch {
+        return fallback;
+    }
+    if (resolved.origin !== publicOrigin) return fallback;
+    if (options.allowedCallbackPaths && !callbackPathAllowed(resolved.pathname, options.allowedCallbackPaths)) return fallback;
+    if (options.isCallbackAllowed) {
+        let allowed = false;
+        try { allowed = options.isCallbackAllowed(new URL(resolved)) === true; } catch { allowed = false; }
+        if (!allowed) return fallback;
+    }
+    return resolved.toString();
 }
 
 type Handler<P> = (request: Request, context?: RouteContext<P>) => Promise<Response>;

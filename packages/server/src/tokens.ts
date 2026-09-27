@@ -1,10 +1,13 @@
 /**
  * Verificación local de los tokens de Customy Access (JWT RS256 del issuer,
- * JWKS en caché). Los verificadores devuelven el principal o `null`; nunca
- * lanzan por un token inválido. Solo lanzan por una configuración inválida.
+ * JWKS en caché). Los verificadores devuelven el principal o `null` si el
+ * token no vale (→ 401); nunca lanzan por un token inválido. Lanzan solo por
+ * una configuración inválida (al construir) y, al verificar, con
+ * `CustomySdkError` de código `ACCESS_UNAVAILABLE` (status 503) cuando no se
+ * puede decidir porque Access (JWKS o introspección) no responde (→ 503).
  */
 import { CustomySdkError, normalizeIssuer } from "@customyai/core";
-import { jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
+import { errors as joseErrors, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { createRemoteJwks, type RemoteJwksOptions } from "./jwks";
 
 type Claims = JWTPayload & Record<string, unknown>;
@@ -45,8 +48,13 @@ export type KeySource = Readonly<{
     keys?: JWTVerifyGetKey;
     /** Opciones del JWKS remoto (fetch, caché, cooldown). */
     jwks?: RemoteJwksOptions;
-    /** Tolerancia de reloj en segundos (por defecto 30). */
+    /** Tolerancia de reloj en segundos para `exp`/`nbf` (por defecto 30). */
     clockToleranceSeconds?: number;
+    /**
+     * Margen de reloj en segundos para `iat`: un token emitido «en el futuro»
+     * más allá de este margen se rechaza (por defecto 60).
+     */
+    issuedAtSkewSeconds?: number;
     /** Reloj inyectable (ms). */
     now?: () => number;
 }>;
@@ -78,6 +86,29 @@ export type AccessTokenVerifierOptions = KeySource & Readonly<{
 
 export type TokenVerifier<P> = (token: string) => Promise<P | null>;
 
+/** Código del error que lanza un verificador cuando Access no responde (la app responde 503). */
+export const ACCESS_UNAVAILABLE = "ACCESS_UNAVAILABLE";
+
+/** ¿Es el fallo «Access no disponible» de un verificador (→ 503), no un token inválido? */
+export function isAccessUnavailable(error: unknown): error is CustomySdkError {
+    return error instanceof CustomySdkError && error.code === ACCESS_UNAVAILABLE;
+}
+
+function accessUnavailable(cause: unknown): CustomySdkError {
+    return new CustomySdkError({ code: ACCESS_UNAVAILABLE, status: 503, service: "access", message: "Customy Access is unavailable to verify the credential", cause });
+}
+
+/**
+ * ¿El fallo de verificación es de disponibilidad (issuer, JWKS o red) y no
+ * del token? Los errores de JOSE son del token, salvo el plazo del JWKS.
+ */
+function isAvailabilityFailure(error: unknown): boolean {
+    if (error instanceof CustomySdkError) return error.code.startsWith("SDK_JWKS_") || error.code === ACCESS_UNAVAILABLE;
+    if (error instanceof joseErrors.JWKSTimeout) return true;
+    if (error instanceof joseErrors.JOSEError) return false;
+    return true;
+}
+
 /** Vida máxima que emite Access para un token de máquina. */
 export const MAX_MACHINE_TOKEN_LIFETIME_SECONDS = 900;
 const TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -100,18 +131,23 @@ function plausibleJwt(token: unknown): token is string {
 }
 
 async function verifyJwt(token: string, keys: JWTVerifyGetKey, issuer: string, audience: string, options: KeySource): Promise<Claims | null> {
+    let payload: Claims;
     try {
-        const { payload } = await jwtVerify(token, keys, {
+        ({ payload } = await jwtVerify(token, keys, {
             issuer,
             audience,
             algorithms: ["RS256"],
             clockTolerance: options.clockToleranceSeconds ?? 30,
             ...(options.now ? { currentDate: new Date(options.now()) } : {}),
-        });
-        return payload as Claims;
-    } catch {
+        }) as { payload: Claims });
+    } catch (error) {
+        if (isAvailabilityFailure(error)) throw accessUnavailable(error);
         return null;
     }
+    // `iat` en el futuro (más allá del margen): reloj del emisor roto o token fabricado.
+    const nowSeconds = Math.floor((options.now?.() ?? Date.now()) / 1000);
+    if (typeof payload.iat === "number" && payload.iat > nowSeconds + (options.issuedAtSkewSeconds ?? 60)) return null;
+    return payload;
 }
 
 /** Valida los claims de un token de máquina ya verificado criptográficamente. */
@@ -182,6 +218,7 @@ export function createAccessTokenVerifier(options: AccessTokenVerifierOptions): 
         }
     }
 
+    /** `true`/`false` si Access decide; lanza `ACCESS_UNAVAILABLE` si no contesta (red, plazo, 429, 5xx). */
     async function stillActive(token: string, principal: UserPrincipal): Promise<boolean> {
         const fetchImpl = options.introspection?.fetch ?? globalThis.fetch.bind(globalThis);
         const controller = new AbortController();
@@ -194,12 +231,15 @@ export function createAccessTokenVerifier(options: AccessTokenVerifierOptions): 
                 redirect: "error",
                 signal: controller.signal,
             });
+            if (response.status === 429 || response.status >= 500) throw accessUnavailable(new CustomySdkError({ code: `HTTP_${response.status}`, status: response.status, service: "access" }));
             if (!response.ok) return false;
-            const body = await response.json() as Record<string, unknown>;
+            const body = await response.json().catch(() => null) as Record<string, unknown> | null;
+            if (!body || typeof body !== "object") throw accessUnavailable(new CustomySdkError({ code: "SDK_INTROSPECTION_INVALID", status: response.status, service: "access" }));
             return body.active === true && body.sub === principal.subject && body.exp === principal.expiresAt
                 && body.org_id === principal.organizationId && body.environment_id === principal.environmentId;
-        } catch {
-            return false;
+        } catch (error) {
+            if (isAccessUnavailable(error)) throw error;
+            throw accessUnavailable(error);
         } finally {
             clearTimeout(timer);
         }

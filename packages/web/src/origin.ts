@@ -1,7 +1,11 @@
 /**
- * Origen público de la app y cabeceras hacia Access. La app puede estar detrás
- * de uno o varios proxies: el host público sale del configurado o de las
- * cabeceras reenviadas, nunca de un host interno (localhost, 0.0.0.0…).
+ * Origen público de la app y cabeceras hacia Access. Con `publicOrigin`
+ * configurado, manda él: las cabeceras reenviadas (`x-forwarded-host`…) solo
+ * cuentan si el operador lo pide con `trustProxyHeaders`. Detrás de varios
+ * proxies el último salto puede reescribir el host a uno interno, y un
+ * origen deducido de ahí rechazaría logins legítimos. Sin `publicOrigin`, el
+ * host sale de las cabeceras reenviadas o del `Host`, nunca de un host
+ * interno (localhost, 0.0.0.0…).
  */
 import { CustomySdkError } from "@customyai/core";
 import { trimTrailingSlashes } from "./trim";
@@ -17,8 +21,19 @@ export interface CustomyScopeOptions {
 }
 
 export interface CustomyOriginOptions {
-    /** Origen público canónico de la app (`https://app.example.com`). Recomendado detrás de proxies. */
+    /**
+     * Origen público canónico de la app (`https://app.example.com`).
+     * Recomendado siempre; detrás de proxies, imprescindible. Si está, es el
+     * origen que se compara (CSRF) y con el que se resuelven redirecciones y callbacks.
+     */
     publicOrigin?: string;
+    /**
+     * Con `publicOrigin`, deja que las cabeceras reenviadas por el proxy
+     * (`x-customy-forwarded-host`, `x-forwarded-host`, `x-forwarded-proto`)
+     * manden sobre él (por defecto false). Solo si tu proxy las fija siempre
+     * y la app sirve varios hosts públicos.
+     */
+    trustProxyHeaders?: boolean;
 }
 
 /** Petición mínima que leen los handlers: la `Request` estándar. */
@@ -50,6 +65,7 @@ function configuredOrigin(options?: CustomyOriginOptions): URL | null {
 
 export function getPublicHost(request: RequestLike, options?: CustomyOriginOptions): string {
     const configured = configuredOrigin(options);
+    if (configured && options?.trustProxyHeaders !== true) return configured.host;
     const candidates = [
         firstForwardedValue(request.headers.get("x-customy-forwarded-host")),
         firstForwardedValue(request.headers.get("x-forwarded-host")),
@@ -61,6 +77,7 @@ export function getPublicHost(request: RequestLike, options?: CustomyOriginOptio
 
 export function getPublicProto(request: RequestLike, options?: CustomyOriginOptions): "http" | "https" {
     const configured = configuredOrigin(options);
+    if (configured && options?.trustProxyHeaders !== true) return configured.protocol === "http:" ? "http" : "https";
     const publicHost = getPublicHost(request, options);
     if (configured && (isInternalHost(publicHost) || publicHost === configured.host)) {
         return configured.protocol === "http:" ? "http" : "https";
@@ -102,13 +119,28 @@ export function searchParam(url: URL, names: readonly string[], fallback = ""): 
 export function applyScopeHeaders(headers: Headers, url: URL, options?: CustomyScopeOptions): void {
     const publishableKey = searchParam(url, ["publishableKey", "publishable_key", "pk"], options?.publishableKey ?? "");
     const environmentId = searchParam(url, ["envId", "env_id", "environmentId", "environment_id"], options?.environmentId ?? "");
-    const organizationSlug = searchParam(url, ["orgSlug", "org_slug", "orgId", "org_id", "organizationId", "organization_id"], options?.organizationSlug ?? "");
+    const organizationSlug = searchParam(url, ["orgSlug", "org_slug", "orgId", "org_id", "organizationId", "organization_id"], options?.organizationSlug ?? "")
+        || organizationSlugFromHeaders(headers);
     if (publishableKey) headers.set("x-publishable-key", publishableKey);
     if (environmentId) {
         headers.set("x-env-id", environmentId);
         headers.set("x-environment-id", environmentId);
     }
-    if (organizationSlug) headers.set("x-organization-id", organizationSlug);
+    if (organizationSlug) {
+        // Transición: el slug viaja en las dos; `x-organization-id` es la que leen las versiones actuales de Access.
+        headers.set(ORGANIZATION_SLUG_HEADER, organizationSlug);
+        headers.set(LEGACY_ORGANIZATION_HEADER, organizationSlug);
+    }
+}
+
+/** Cabecera con el slug de la organización (la nueva). */
+export const ORGANIZATION_SLUG_HEADER = "x-organization-slug";
+/** Cabecera heredada que también lleva el slug; se envía y se lee durante la transición. */
+export const LEGACY_ORGANIZATION_HEADER = "x-organization-id";
+
+/** Slug de la organización en unas cabeceras: primero `x-organization-slug`, luego la heredada `x-organization-id`. */
+export function organizationSlugFromHeaders(headers: Pick<Headers, "get">): string {
+    return headers.get(ORGANIZATION_SLUG_HEADER)?.trim() || headers.get(LEGACY_ORGANIZATION_HEADER)?.trim() || "";
 }
 
 export function applyNoStore(headers: Headers): void {

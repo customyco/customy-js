@@ -175,6 +175,12 @@ export type NotificationSettingsInput = {
   quiet_hours?: QuietHours | null;
   /** Por minuto. */
   provider_budgets?: { apns?: number; fcm?: number; webpush?: number };
+  /** `true` (por defecto) = un mensaje in-app o una tarjeta solo se activa aprobado por otra persona. */
+  require_approval?: boolean;
+  /** Versión de la API fijada para la cuenta (`YYYY-MM-DD`); `null` = la de cada llave. */
+  api_version?: string | null;
+  /** Configuración remota de las apps (`GET /client/config`); lo que no viene queda igual. */
+  client_config?: ClientConfigSettingsInput;
 };
 
 export type NotificationSettings = {
@@ -183,16 +189,27 @@ export type NotificationSettings = {
   quiet_hours: QuietHours | null;
   provider_budgets: { apns?: number; fcm?: number; webpush?: number };
   updated_at: string | null;
+  require_approval?: boolean;
+  api_version?: string | null;
+  client_config?: ClientConfigSettings;
 };
 
 export type ChannelPreference = { push: boolean; inbox: boolean };
+
+/** Atributos planos de una persona para personalizar (`{{ first_name }}`) y segmentar (`attributes.plan`). */
+export type SubscriberAttributes = Record<string, string | number | boolean>;
 
 export type SubscriberInput = {
   /** Zona IANA; `null` la borra. */
   timezone?: string | null;
   locale?: string | null;
   quiet_hours?: QuietHours | null;
+  /** Se mezclan con los guardados; un valor `null` borra esa clave (≤ 50 claves, ≤ 4 KB). */
+  attributes?: Record<string, string | number | boolean | null>;
 };
+
+/** Una persona encontrada por atributo (`subscribers.find`), con sus dispositivos (sin token). */
+export type SubscriberMatch = Subscriber & { devices: PushDevice[] };
 
 export type Subscriber = {
   object: "subscriber";
@@ -201,6 +218,7 @@ export type Subscriber = {
   locale: string | null;
   quiet_hours: QuietHours | null;
   preferences: Record<string, Partial<ChannelPreference>>;
+  attributes?: SubscriberAttributes;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -312,17 +330,113 @@ export type InboxPage = {
 
 export type SubscriberToken = { object: "subscriber_token"; token: string; subscriber: string; expires_at: string };
 
-export type InAppLayout = "modal" | "banner" | "fullscreen" | "card";
-export type InAppButton = { id: string; label: string; url?: string; dismiss?: boolean };
+export type InAppLayout = "modal" | "banner" | "fullscreen" | "card" | "slideup" | "tooltip" | "html";
+export type InAppButtonStyle = "primary" | "secondary" | "link";
+/** Acción del sistema de un botón: `request_push_permission` pide el permiso de notificaciones. */
+export type InAppButtonAction = "request_push_permission";
+export type InAppButton = {
+  id: string;
+  label: string;
+  /** Ruta de la app (`/facturas`) o URL https. */
+  url?: string;
+  dismiss?: boolean;
+  style?: InAppButtonStyle;
+  action?: InAppButtonAction | null;
+};
+
+/** Colores y forma del mensaje (`#rrggbb`); con `brand_kit_id` Send mezcla el kit al servirlo. */
+export type InAppStyle = {
+  background?: string;
+  text?: string;
+  accent?: string;
+  /** 0…32. */
+  radius?: number;
+  /** Opacidad del fondo detrás del mensaje, 0…0.9. */
+  overlay?: number;
+  [key: string]: unknown;
+};
+
+export type InAppBlockAlign = "start" | "center";
+export type InAppHeadingBlock = { type: "heading"; text: string; align?: InAppBlockAlign };
+export type InAppTextBlock = { type: "text"; text: string; align?: InAppBlockAlign };
+/** `aspect` = ancho / alto (1.78 = 16:9). */
+export type InAppImageBlock = { type: "image"; url: string; alt?: string; aspect?: number };
+export type InAppButtonsBlock = { type: "buttons"; items: InAppButton[] };
+export type InAppSpacerBlock = { type: "spacer"; size?: 8 | 16 | 24 | 32 };
+export type InAppDividerBlock = { type: "divider" };
+export type InAppSurveyKind = "single" | "multi" | "rating" | "text";
+export type InAppSurveyOption = { id: string; label: string };
+export type InAppSurveyBlock = {
+  type: "survey";
+  /** Vuelve en `survey_response` como `survey_id`. */
+  id: string;
+  question: string;
+  kind: InAppSurveyKind;
+  /** `single` y `multi`. */
+  options?: InAppSurveyOption[];
+  /** `rating`: el máximo de la escala (5, 10). */
+  scale?: number;
+  submit_label?: string;
+  thanks?: string;
+};
+/** Un bloque del contenido: con `blocks` la app pinta los bloques en lugar de título, cuerpo, imagen y botones. */
+export type InAppBlock = InAppHeadingBlock | InAppTextBlock | InAppImageBlock | InAppButtonsBlock | InAppSpacerBlock | InAppDividerBlock | InAppSurveyBlock;
+export type InAppBlockType = InAppBlock["type"];
+
+/** Contenido v1 (título, cuerpo, imagen, botones) para las apps que no pueden pintar el diseño. */
+export type InAppFallbackContent = { title?: string; body?: string; image?: string; buttons?: InAppButton[] };
+
+export type InAppLocaleContent = {
+  title?: string;
+  body?: string;
+  image?: string;
+  buttons?: InAppButton[];
+  blocks?: InAppBlock[];
+  html?: string;
+};
+
 export type InAppContent = {
   title?: string;
   body?: string;
   image?: string;
   buttons?: InAppButton[];
-  style?: Record<string, unknown>;
-  locales?: Record<string, { title?: string; body?: string; buttons?: InAppButton[] }>;
+  style?: InAppStyle;
+  locales?: Record<string, InAppLocaleContent>;
+  blocks?: InAppBlock[];
+  /** Solo en el diseño `html` (≤ 200 KB); la app lo aísla (ver `HTML_CSP` y `BRIDGE_SCRIPT` en `./inbox`). */
+  html?: string;
+  /** Solo en `tooltip`: la clave del elemento que registró la app; si no está en pantalla se pinta como `slideup`. */
+  anchor?: string;
+  /** `slideup` y `banner`. */
+  position?: "top" | "bottom";
+  brand_kit_id?: string | null;
+  fallback?: InAppFallbackContent | null;
 };
-export type InAppStatus = "draft" | "active" | "paused" | "archived";
+export type InAppStatus = "draft" | "in_review" | "approved" | "active" | "paused" | "archived";
+
+export type FilterOp = "eq" | "neq" | "in" | "nin" | "gte" | "lte" | "exists" | "not_exists" | "contains";
+export type AudienceField = "locale" | "platform" | "app_version" | "timezone" | `attributes.${string}`;
+export type AudienceFilter = { field: AudienceField; op: FilterOp; value?: unknown };
+/** Todas las condiciones a la vez (Y); `null` = todas las personas. */
+export type Audience = { filters: AudienceFilter[] };
+/** Condición sobre una propiedad del evento que dispara el mensaje. */
+export type TriggerFilter = { property: string; op: FilterOp; value?: unknown };
+/** Una variante A/B: reparto fijo por persona según `weight`. */
+export type InAppVariant = { id: string; weight: number; layout?: InAppLayout; content: InAppContent };
+/** Conversión: un evento `custom` con ese nombre dentro de la ventana tras verlo. */
+export type ConversionGoal = { event: string; window_hours: number };
+
+/** Quién pidió, aprobó o rechazó la publicación (el sujeto del token o `x-customy-actor`). */
+export type ApprovalFields = {
+  created_by?: string | null;
+  submitted_by?: string | null;
+  submitted_at?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  rejected_by?: string | null;
+  rejected_at?: string | null;
+  rejection_reason?: string | null;
+};
 
 export type InAppMessageInput = {
   name: string;
@@ -330,10 +444,16 @@ export type InAppMessageInput = {
   content: InAppContent;
   /** `null` = todas las personas. */
   subscribers?: string[] | null;
+  /** Personas por condiciones (idioma, plataforma, versión, zona, `attributes.<clave>`), en lugar de `subscribers`. */
+  audience?: Audience | null;
   /** `null` (por defecto) = todas; si no, solo en esas apps (`ios`, `android`, `web`). */
   platforms?: Array<"ios" | "android" | "web"> | null;
   /** `session_start` (por defecto), `now` o un evento de la app (`checkout_viewed`). */
   trigger_event?: string;
+  /** Condiciones sobre las propiedades del evento. */
+  trigger_filters?: TriggerFilter[];
+  /** Espera antes de mostrarlo, 0…3600 s. */
+  delay_seconds?: number;
   /** −100…100; gana el mayor. */
   priority?: number;
   /** `once` (por defecto), `always` o `every:<segundos>`. */
@@ -342,9 +462,15 @@ export type InAppMessageInput = {
   ends_at?: string | null;
   status?: InAppStatus;
   source?: NotificationSource;
+  variants?: InAppVariant[] | null;
+  /** 0…50: porcentaje que no ve nada (grupo de control de las conversiones). */
+  control_pct?: number;
+  conversion?: ConversionGoal | null;
+  /** Solo procedencia. */
+  template_id?: string | null;
 };
 
-export type InAppMessage = {
+export type InAppMessage = ApprovalFields & {
   object: "in_app_message";
   id: string;
   name: string;
@@ -364,6 +490,257 @@ export type InAppMessage = {
   funnel?: NotificationFunnel;
   /** En la creación: `true` si esta `Idempotency-Key` ya lo había creado (no se duplicó). */
   replayed?: boolean;
+  audience?: Audience | null;
+  trigger_filters?: TriggerFilter[];
+  delay_seconds?: number;
+  variants?: InAppVariant[] | null;
+  control_pct?: number;
+  conversion?: ConversionGoal | null;
+  template_id?: string | null;
+};
+
+/** Resultado de `test`: esa persona lo ve en su próxima lectura durante 24 h, aunque no le toque. */
+export type InAppTestResult = {
+  object: "in_app_test";
+  id: string;
+  subscriber: string;
+  variant_id: string | null;
+  expires_at: string;
+  /** Cuándo se mandó esta prueba (la app muestra primero las pruebas, la más reciente antes). */
+  test_sent_at?: string;
+  /** Id del push silencioso que hace que la app abierta vuelva a pedir (`customy_refresh`), o null. */
+  refresh_push?: string | null;
+};
+export type ContentCardTestResult = Omit<InAppTestResult, "object"> & { object: "content_card_test" };
+
+/** Lo que hizo quien prueba (sus eventos no cuentan en las métricas reales). */
+export type EngagementTestStats = {
+  impressions: number;
+  clicks: number;
+  clicks_by_action: Record<string, number>;
+  dismissals: number;
+  /** Solo en mensajes in-app: la última respuesta de cada persona que prueba. */
+  survey?: Record<string, SurveyStats>;
+  users: number;
+  /** El último evento de prueba (ISO) o null. */
+  last_at: string | null;
+};
+
+/** Un evento de quien prueba, del más reciente al más antiguo (`testEvents`). */
+export type EngagementTestEvent = {
+  object: "in_app_test_event" | "content_card_test_event";
+  id: string;
+  type: "impression" | "clicked" | "dismissed" | "converted" | "survey_response" | (string & {});
+  subscriber: string | null;
+  /** El botón (id) en un clic. */
+  action: string | null;
+  variant_id: string | null;
+  rendered_as: string | null;
+  survey_id?: string;
+  answers?: string[] | number | string | null;
+  occurred_at: string;
+};
+
+export type EngagementCounters = {
+  impressions: number;
+  clicks: number;
+  clicks_by_action: Record<string, number>;
+  dismissals: number;
+  conversions: number;
+  /** Conversiones / personas (0 sin personas). */
+  conversion_rate: number;
+};
+export type SurveyStats = { responses: number; distribution: Record<string, number> };
+export type EngagementStats = EngagementCounters & {
+  by_variant: Record<string, EngagementCounters & { users: number }>;
+  control: { conversions: number; users: number };
+  survey: Record<string, SurveyStats>;
+  /** Apps que no podían pintarlo y no había alternativa. */
+  skipped_unsupported: number;
+  /** Personas distintas que lo vieron. */
+  users: number;
+  /** Los eventos de quien prueba, aparte (un Send anterior no lo devuelve). */
+  test?: EngagementTestStats;
+};
+export type InAppStats = EngagementStats & { object: "in_app_stats"; id: string };
+export type ContentCardStats = EngagementStats & { object: "content_card_stats"; id: string };
+
+/** Un paso del flujo de publicación (enviar, aprobar, rechazar, activar, pausar). */
+export type ApprovalEvent = {
+  object: "approval_event";
+  action: string;
+  actor: string | null;
+  from_status: InAppStatus | null;
+  to_status: InAppStatus;
+  reason: string | null;
+  created_at: string;
+};
+
+export type InAppTemplateInput = {
+  name: string;
+  description?: string | null;
+  layout: InAppLayout;
+  content: InAppContent;
+  thumbnail_url?: string | null;
+  tags?: string[];
+};
+export type InAppTemplate = {
+  object: "in_app_template";
+  id: string;
+  name: string;
+  description: string | null;
+  layout: InAppLayout;
+  content: InAppContent;
+  thumbnail_url: string | null;
+  tags: string[];
+  /** Las de Send: solo lectura. */
+  builtin: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BrandKitColors = { background: string; text: string; accent: string; muted: string };
+export type BrandKitInput = {
+  name: string;
+  colors: BrandKitColors;
+  radius?: number;
+  font_family?: string | null;
+  logo_url?: string | null;
+  default?: boolean;
+};
+export type BrandKit = {
+  object: "brand_kit";
+  id: string;
+  name: string;
+  colors: BrandKitColors;
+  radius: number;
+  font_family: string | null;
+  logo_url: string | null;
+  default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContentCardKind = "classic" | "captioned" | "banner";
+export type ContentCardLocaleContent = { title?: string; body?: string; button_label?: string; url?: string; image?: string };
+export type ContentCardVariant = { id: string; weight: number; kind?: ContentCardKind; title?: string; body?: string; image?: string; url?: string; button_label?: string };
+export type ContentCardStatus = InAppStatus;
+
+export type ContentCardInput = {
+  name: string;
+  kind?: ContentCardKind;
+  title: string;
+  body?: string | null;
+  image?: string | null;
+  /** Ruta de la app o URL https. */
+  url?: string | null;
+  button_label?: string | null;
+  /** Fija arriba del feed. */
+  pinned?: boolean;
+  dismissible?: boolean;
+  starts_at?: string;
+  ends_at?: string | null;
+  platforms?: Array<"ios" | "android" | "web"> | null;
+  subscribers?: string[] | null;
+  audience?: Audience | null;
+  locales?: Record<string, ContentCardLocaleContent>;
+  variants?: ContentCardVariant[] | null;
+  control_pct?: number;
+  conversion?: ConversionGoal | null;
+  status?: ContentCardStatus;
+  priority?: number;
+};
+
+export type ContentCard = ApprovalFields & {
+  object: "content_card";
+  id: string;
+  name: string;
+  kind: ContentCardKind;
+  title: string;
+  body: string | null;
+  image: string | null;
+  url: string | null;
+  button_label: string | null;
+  pinned: boolean;
+  dismissible: boolean;
+  starts_at: string;
+  ends_at: string | null;
+  platforms: Array<"ios" | "android" | "web"> | null;
+  subscribers: string[] | null;
+  audience: Audience | null;
+  locales: Record<string, ContentCardLocaleContent>;
+  variants: ContentCardVariant[] | null;
+  control_pct: number;
+  conversion: ConversionGoal | null;
+  status: ContentCardStatus;
+  priority: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Lo que recibe la app de `GET /client/content-cards`: ya en su idioma y con la variante aplicada. */
+export type EligibleContentCard = {
+  id: string;
+  kind: ContentCardKind;
+  title: string;
+  body: string | null;
+  image: string | null;
+  url: string | null;
+  button_label: string | null;
+  pinned: boolean;
+  dismissible: boolean;
+  priority: number;
+  starts_at: string;
+  ends_at: string | null;
+  variant_id: string | null;
+  test: boolean;
+  /** Solo en pruebas: cuándo se mandó la última a esta persona (ISO). Mostrar primero, la más reciente antes. */
+  test_sent_at?: string | null;
+};
+
+/** `POST /api/templates/preview`: `text` o `content` con `{{ variables }}`, para una persona o unos atributos. */
+export type TemplatePreviewInput = {
+  text?: string;
+  content?: Record<string, unknown>;
+  subscriber?: string;
+  attributes?: Record<string, unknown>;
+  locale?: string;
+};
+export type TemplatePreview = {
+  object: "template_preview";
+  text?: string;
+  content?: Record<string, unknown>;
+  /** Las variables que usa. */
+  variables: string[];
+};
+
+export type ClientKillSwitches = { in_app: boolean; content_cards: boolean; html: boolean };
+/** La parte de los ajustes que llega a las apps. */
+export type ClientConfigSettings = {
+  poll_seconds: number;
+  features: Record<string, boolean>;
+  min_sdk: string | null;
+  kill: ClientKillSwitches;
+};
+export type ClientConfigSettingsInput = {
+  poll_seconds?: number;
+  features?: Record<string, boolean>;
+  min_sdk?: string | null;
+  kill?: Partial<ClientKillSwitches>;
+};
+/** `GET /client/config`: configuración remota; un interruptor de `kill` oculta esa función al momento. */
+export type ClientConfig = ClientConfigSettings & { object?: "client_config"; api_version: string | null };
+
+export type ClientFeature = "variables" | "content_cards" | "bridge_v1" | "push_primer" | (string & {});
+/** Lo que la app sabe pintar: viaja en la cabecera `Customy-Client` y Send adapta cada mensaje a ello. */
+export type ClientCapabilities = {
+  /** `send/<versión>`; lo pone el SDK. */
+  sdk?: string;
+  app_version?: string;
+  platform?: "ios" | "android" | "web";
+  layouts?: readonly InAppLayout[];
+  blocks?: readonly InAppBlockType[];
+  features?: readonly ClientFeature[];
 };
 
 /** Lo que recibe la app: el mensaje ya en su idioma, sin la audiencia. */
@@ -374,10 +751,49 @@ export type EligibleInAppMessage = {
   priority: number;
   frequency: string;
   ends_at: string | null;
-  content: { title?: string; body?: string; image?: string; buttons: InAppButton[]; style: Record<string, unknown> };
+  content: {
+    title?: string;
+    body?: string;
+    image?: string;
+    buttons: InAppButton[];
+    style: InAppStyle;
+    blocks?: InAppBlock[];
+    html?: string;
+    anchor?: string;
+    position?: "top" | "bottom";
+  };
+  /** Solo se muestra si las propiedades del evento las cumplen todas (`matchesFilters`). */
+  trigger_filters?: TriggerFilter[];
+  /** Segundos de espera tras el disparador. */
+  delay_seconds?: number;
+  variant_id?: string | null;
+  /** Envío de prueba: se muestra aunque no le toque. */
+  test?: boolean;
+  /** Solo en pruebas: cuándo se mandó la última a esta persona (ISO). Mostrar primero, la más reciente antes, sin esperar a la regla de uno por sesión. */
+  test_sent_at?: string | null;
+  /** Si Send lo adaptó a lo que la app sabe pintar: `slideup`, `modal`, `fallback`, `blocks_dropped`. */
+  rendered_as?: string | null;
 };
 
-export type ClientEventType = "delivered" | "displayed" | "opened" | "clicked" | "dismissed" | "impression" | "converted";
+export type ClientEventType =
+  | "delivered"
+  | "displayed"
+  | "opened"
+  | "clicked"
+  | "dismissed"
+  | "impression"
+  | "converted"
+  | "in_app_impression"
+  | "in_app_click"
+  | "in_app_dismiss"
+  | "card_impression"
+  | "card_click"
+  | "card_dismiss"
+  | "survey_response"
+  | "custom";
+
+/** Respuesta de una encuesta: las opciones elegidas, una nota o un texto. */
+export type SurveyAnswers = string[] | number | string;
 
 /** Un recibo del cliente para `POST /client/events`. */
 export type ClientEvent = {
@@ -392,4 +808,13 @@ export type ClientEvent = {
   action?: string;
   value?: number;
   occurred_at?: string;
+  variant_id?: string | null;
+  /** Cómo se pintó el mensaje in-app si Send lo adaptó. */
+  rendered_as?: string | null;
+  card_id?: string;
+  survey_id?: string;
+  answers?: SurveyAnswers;
+  /** `custom`: nombre (≤ 60) y propiedades (≤ 2 KB). */
+  name?: string;
+  properties?: Record<string, unknown>;
 };

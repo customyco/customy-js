@@ -34,18 +34,49 @@ export interface CustomyServerSession {
     session: Record<string, unknown>;
     actor: Record<string, unknown> | null;
     isImpersonated: boolean;
-    /** `Set-Cookie` de renovación que devolvió Access, ya adaptadas al host. */
+    /**
+     * `Set-Cookie` de renovación que devolvió Access, ya adaptadas al host.
+     * Hay que devolverlas en la respuesta: `applySessionCookies(response, session)`.
+     */
     setCookies: string[];
 }
 
-/** Origen de la cookie: una `Request`, sus `Headers` o la cabecera `Cookie` en texto. */
-export type CookieSource = RequestLike | Headers | string | null | undefined;
+/** Algo con `get(nombre)`: `Headers`, o el `headers()` de un framework (p. ej. `ReadonlyHeaders`). */
+export type HeadersLike = { get(name: string): string | null | undefined };
+
+/** Almacén de cookies de un framework (`getAll()` → `{ name, value }[]`, p. ej. `cookies()`). */
+export type CookieStoreLike = { getAll(): ReadonlyArray<{ name: string; value: string }> };
+
+/**
+ * Origen de la cookie: una `Request`, unas cabeceras (`Headers` o cualquier
+ * objeto con `get(nombre)`), un almacén de cookies con `getAll()` o la
+ * cabecera `Cookie` en texto.
+ */
+export type CookieSource = RequestLike | Headers | HeadersLike | CookieStoreLike | string | null | undefined;
+
+function isRequestLike(source: object): source is RequestLike {
+    const candidate = source as Partial<RequestLike>;
+    return typeof candidate.url === "string" && typeof candidate.headers === "object" && candidate.headers !== null && typeof candidate.headers.get === "function";
+}
 
 function cookieHeaderOf(source: CookieSource): string | null {
     if (source === null || source === undefined) return null;
     if (typeof source === "string") return source;
-    if (source instanceof Headers) return source.get("cookie");
-    return source.headers.get("cookie");
+    if (typeof source !== "object") return null;
+    if (isRequestLike(source)) return source.headers.get("cookie");
+    const candidate = source as Partial<HeadersLike & CookieStoreLike>;
+    if (typeof candidate.get === "function") {
+        const value = (candidate as HeadersLike).get("cookie");
+        if (typeof value === "string") return value;
+    }
+    if (typeof candidate.getAll === "function") {
+        const all = (candidate as CookieStoreLike).getAll();
+        if (Array.isArray(all)) {
+            const pairs = all.filter((entry) => entry && typeof entry.name === "string" && typeof entry.value === "string").map((entry) => `${entry.name}=${entry.value}`);
+            return pairs.length > 0 ? pairs.join("; ") : null;
+        }
+    }
+    return null;
 }
 
 /**
@@ -116,18 +147,71 @@ async function lookupSession(
 /**
  * Sesión del usuario de una petición, validada en Access, o `null`. Nunca
  * lanza por una sesión ausente o inválida; sí por una configuración inválida.
+ *
+ * `source` es la `Request`, unas cabeceras (`Headers` o el `headers()` del
+ * framework), un almacén de cookies con `getAll()` o la cabecera `Cookie`.
+ * Si Access renovó la sesión, las cookies nuevas vienen en `setCookies`:
+ * aplícalas con `applySessionCookies(response, session)` (en el middleware ya
+ * vienen en `responseHeaders`).
  */
 export async function getServerSession(source: CookieSource, options: CustomyAuthOptions): Promise<CustomyServerSession | null> {
     accessBaseUrl(options.accessUrl);
     if (options.requireExactEnvironment && (!options.environmentId || !options.publishableKey || !options.organizationSlug)) return null;
     const cookie = resolveSessionCookie(cookieHeaderOf(source));
     if (!cookie) return null;
-    const request = source && typeof source === "object" && !(source instanceof Headers) ? source : null;
+    const request = source && typeof source === "object" && isRequestLike(source) ? source : null;
     const result = await lookupSession(cookie, options, request);
     if (result.kind !== "valid") return null;
     if (options.requireExactEnvironment && !sessionMatchesFixedScope(result.data, options.environmentId!)) return null;
     const actor = result.data.act && typeof result.data.act === "object" ? result.data.act as Record<string, unknown> : null;
     return { user: result.data.user, session: result.data.session, actor, isImpersonated: actor !== null, setCookies: result.setCookies };
+}
+
+/** Lo que lleva cookies de sesión renovadas: el resultado de `getServerSession` o del middleware. */
+export type SessionCookieSource =
+    | { readonly setCookies?: readonly string[] }
+    | { readonly responseHeaders?: Headers }
+    | null
+    | undefined;
+
+function sessionSetCookies(source: SessionCookieSource): string[] {
+    if (!source) return [];
+    if ("setCookies" in source && Array.isArray(source.setCookies)) return source.setCookies.filter((value): value is string => typeof value === "string" && value.length > 0);
+    if ("responseHeaders" in source && source.responseHeaders) return getSetCookieHeaders(source.responseHeaders);
+    return [];
+}
+
+/**
+ * Aplica a una respuesta (o a unas cabeceras) las `Set-Cookie` de renovación
+ * que devolvió Access en `getServerSession` o el middleware. Sin ellas, la
+ * sesión caduca aunque el usuario siga activo.
+ *
+ * Devuelve el destino con las cookies: la misma `Response`/`Headers` si se
+ * pueden modificar, o una copia de la `Response` si sus cabeceras son
+ * inmutables (`Response.redirect()`, una respuesta de `fetch`). Usa siempre el
+ * valor devuelto.
+ *
+ * ```ts
+ * const session = await getServerSession(request, options);
+ * return applySessionCookies(Response.json({ user: session?.user ?? null }), session);
+ * ```
+ */
+export function applySessionCookies<Target extends Response | Headers>(target: Target, source: SessionCookieSource): Target {
+    const cookies = sessionSetCookies(source);
+    if (cookies.length === 0) return target;
+    if (target instanceof Headers) {
+        for (const value of cookies) target.append("set-cookie", value);
+        return target;
+    }
+    const response = target as Response;
+    try {
+        for (const value of cookies) response.headers.append("set-cookie", value);
+        return target;
+    } catch {
+        const headers = new Headers(response.headers);
+        for (const value of cookies) headers.append("set-cookie", value);
+        return new Response(response.body, { status: response.status, statusText: response.statusText, headers }) as Target;
+    }
 }
 
 /** Como `getServerSession`, pero lanza `CustomySdkError` (`UNAUTHORIZED`, 401) si no hay sesión. */

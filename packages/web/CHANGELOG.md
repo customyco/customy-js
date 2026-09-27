@@ -1,5 +1,25 @@
 # @customyai/web
 
+## 0.2.0
+
+### Minor Changes
+
+- Seguridad y ergonomía de la sesión same-origin:
+
+  - **CSRF más estricto** (proxy, sign-out y limpieza de estado): una mutación sin `Origin` ya no pasa; solo la aceptan `Sec-Fetch-Site: same-origin`/`none` o un `Referer` del origen público. `Origin: null` se rechaza.
+  - **`publicOrigin` manda**: si está configurado, es el origen de CSRF, redirecciones y callback social; las cabeceras reenviadas (`x-forwarded-host`…) solo cuentan con `trustProxyHeaders: true`. Detrás de varios proxies ya no se rechazan logins legítimos.
+  - **Callback social**: `allowedCallbackPaths` (ruta y subrutas) e `isCallbackAllowed(url)`; un destino fuera de ellos o de otro origen usa `defaultCallbackPath` en vez de `/`. `resolveCallbackUrl` y `callbackPathAllowed` exportados.
+  - **Renovación de sesión**: `applySessionCookies(response | headers, session | middlewareResult)` aplica las `Set-Cookie` de renovación (copia la respuesta si sus cabeceras son inmutables). `getServerSession` acepta además cualquier objeto con `get(nombre)` (p. ej. el `headers()` del framework) o un almacén de cookies con `getAll()`.
+  - **Sobre de error**: los errores JSON de Access salen como `{ error: { code, message } }`, conservando `code`/`message` planos durante la transición (`normalizeErrors: false` lo apaga); `customyErrorEnvelope` exportado.
+  - **Organización**: el slug viaja en `x-organization-slug` y en `x-organization-id`; se lee cualquiera de las dos que traiga la petición.
+  - **Enlace mágico**: `POST magic-link/send` (clientes anteriores) se reenvía a `sign-in/magic-link`.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.2.0
+  - @customyai/server@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes

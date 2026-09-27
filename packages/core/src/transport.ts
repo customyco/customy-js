@@ -40,6 +40,11 @@ export type TransportOptions = Readonly<{
     maxResponseBytes?: number;
     /** Permite `http://` hacia loopback (desarrollo y tests). */
     allowLoopbackHttp?: boolean;
+    /**
+     * Permite `http://` hacia un host privado (RFC 1918, `*.internal`, nombre de
+     * una etiqueta), nunca a uno público. Lo recomendado es el nombre público https.
+     */
+    allowPrivateHttp?: boolean;
     /** Inyectables para tests. */
     sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
     random?: () => number;
@@ -58,7 +63,31 @@ export type RequestOptions = Readonly<{
     /** Clave propia, o `true` para generar una (reutilizada en todos los intentos). */
     idempotencyKey?: string | boolean;
     retry?: RetryPolicy | false;
+    /**
+     * Cómo leer una respuesta 2xx: `json` (por defecto; un cuerpo que no es
+     * JSON es `SDK_RESPONSE_INVALID`, vacío es `null`) o `text` (el texto tal cual).
+     */
+    responseType?: "json" | "text";
 }>;
+
+/**
+ * Opciones por llamada que todo método de un SDK de producto acepta: cancelar
+ * con `signal` y acotar la espera con `timeoutMs` (por intento; manda sobre
+ * el `timeoutMs` del cliente).
+ */
+export type CallOptions = Readonly<{
+    signal?: AbortSignal;
+    timeoutMs?: number;
+}>;
+
+/** Solo `signal` y `timeoutMs` de unas opciones de llamada, sin claves vacías (para pasarlas al transporte). */
+export function callOptions(options: CallOptions | undefined): CallOptions {
+    if (!options) return {};
+    return {
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
+        ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    };
+}
 
 export type TransportResponse<T> = Readonly<{
     data: T;
@@ -92,19 +121,17 @@ function isRawBody(body: unknown): body is BodyInit {
         || (typeof Blob !== "undefined" && body instanceof Blob);
 }
 
-async function readBody(response: Response, maxBytes: number): Promise<unknown> {
-    if (response.status === 204 || response.status === 205) return null;
+/** Cuerpo leído: `json` dice si se pudo interpretar como JSON (vacío cuenta como `null`). */
+async function readBody(response: Response, maxBytes: number, responseType: "json" | "text"): Promise<{ body: unknown; json: boolean }> {
+    if (response.status === 204 || response.status === 205) return { body: responseType === "text" ? "" : null, json: true };
     const declared = Number(response.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > maxBytes) throw new Error("SDK_RESPONSE_TOO_LARGE");
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength > maxBytes) throw new Error("SDK_RESPONSE_TOO_LARGE");
-    if (buffer.byteLength === 0) return null;
     const text = new TextDecoder().decode(buffer);
-    const type = response.headers.get("content-type") ?? "";
-    if (type.includes("json") || /^[\s]*[[{"]/.test(text)) {
-        try { return JSON.parse(text); } catch { /* texto plano */ }
-    }
-    return text;
+    if (responseType === "text" && response.ok) return { body: text, json: false };
+    if (text.trim().length === 0) return { body: null, json: true };
+    try { return { body: JSON.parse(text), json: true }; } catch { return { body: text, json: false }; }
 }
 
 function linkSignals(outer: AbortSignal | undefined, inner: AbortController): () => void {
@@ -117,7 +144,7 @@ function linkSignals(outer: AbortSignal | undefined, inner: AbortController): ()
 
 export function createTransport(options: TransportOptions): Transport {
     const service = options.service;
-    const baseUrl = normalizeBaseUrl(options.baseUrl, { allowLoopbackHttp: options.allowLoopbackHttp, service });
+    const baseUrl = normalizeBaseUrl(options.baseUrl, { allowLoopbackHttp: options.allowLoopbackHttp, allowPrivateHttp: options.allowPrivateHttp, service });
     const resolvedFetch = options.fetch ?? (typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : undefined);
     if (!resolvedFetch) throw new CustomySdkError({ code: "SDK_FETCH_REQUIRED", service, message: "No fetch implementation available" });
     const fetchImpl: typeof fetch = resolvedFetch;
@@ -145,6 +172,7 @@ export function createTransport(options: TransportOptions): Transport {
             : { ...DEFAULT_RETRY_POLICY, ...options.retry, ...requestOptions.retry };
         const maxBytes = requestOptions.maxBytes ?? options.maxResponseBytes ?? DEFAULT_MAX_BYTES;
         const timeoutMs = requestOptions.timeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+        const responseType = requestOptions.responseType ?? "json";
 
         const headers: Record<string, string> = { accept: "application/json" };
         for (const [name, value] of Object.entries({ ...options.headers, ...requestOptions.headers })) headers[name.toLowerCase()] = value;
@@ -193,7 +221,8 @@ export function createTransport(options: TransportOptions): Transport {
                         : new CustomySdkError({ code: "SDK_NETWORK_ERROR", status: 0, service, cause: error });
                 }
                 let body: unknown;
-                try { body = await readBody(response, maxBytes); }
+                let parsedAsJson: boolean;
+                try { ({ body, json: parsedAsJson } = await readBody(response, maxBytes, responseType)); }
                 catch (error) {
                     if (error instanceof Error && error.message === "SDK_RESPONSE_TOO_LARGE") throw new CustomySdkError({ code: "SDK_RESPONSE_TOO_LARGE", status: response.status, service });
                     if (requestOptions.signal?.aborted) throw new CustomySdkError({ code: "SDK_ABORTED", service, cause: error });
@@ -203,7 +232,19 @@ export function createTransport(options: TransportOptions): Transport {
                 }
                 const envelope = readErrorEnvelope(body);
                 const requestId = response.headers.get("x-request-id") ?? envelope.requestId ?? undefined;
-                if (response.ok) return { data: body as T, status: response.status, headers: response.headers, requestId, attempts: attempt + 1 };
+                if (response.ok) {
+                    if (responseType === "json" && !parsedAsJson) {
+                        throw new CustomySdkError({
+                            code: "SDK_RESPONSE_INVALID",
+                            status: response.status,
+                            service,
+                            requestId,
+                            message: `Customy${service ? ` ${service}` : ""} answered ${response.status} with a body that is not JSON (pass responseType: "text" to read text)`,
+                            body,
+                        });
+                    }
+                    return { data: body as T, status: response.status, headers: response.headers, requestId, attempts: attempt + 1 };
+                }
 
                 retryAfterMs = parseRetryAfter(response.headers.get("retry-after"), now());
                 failure = new CustomySdkError({
@@ -225,7 +266,7 @@ export function createTransport(options: TransportOptions): Transport {
                 if (!isRetryableStatus(response.status)) throw failure;
             } catch (error) {
                 if (!(error instanceof CustomySdkError)) throw error;
-                if (error.code === "SDK_ABORTED" || error.code === "SDK_RESPONSE_TOO_LARGE" || error.code === "SDK_ACCESS_TOKEN_UNAVAILABLE") throw error;
+                if (error.code === "SDK_ABORTED" || error.code === "SDK_RESPONSE_TOO_LARGE" || error.code === "SDK_RESPONSE_INVALID" || error.code === "SDK_ACCESS_TOKEN_UNAVAILABLE") throw error;
                 if (error.status !== 0 && error.status !== 408 && !isRetryableStatus(error.status)) throw error;
                 failure = error;
             } finally {

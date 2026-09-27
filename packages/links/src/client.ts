@@ -95,7 +95,7 @@ export function createLinks(options: LinksOptions) {
     }
   }
   const q = (params: object): Query => params as Query;
-  const text = (path: string, query: Query) => call<unknown>("GET", path, { query, headers: { accept: "text/csv" } }).then((body) => (typeof body === "string" ? body : JSON.stringify(body)));
+  const text = (path: string, query: Query) => call<unknown>("GET", path, { query, headers: { accept: "text/csv" }, responseType: "text" }).then((body) => (typeof body === "string" ? body : JSON.stringify(body)));
   const listLinks = (params: ListLinksParams = {}) => call<Page<Link>>("GET", "/api/links", { query: q(params) });
 
   return {

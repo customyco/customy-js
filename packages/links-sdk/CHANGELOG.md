@@ -1,5 +1,13 @@
 # @customyai/links-sdk
 
+## 0.3.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.2.0
+  - @customyai/links@0.1.1
+
 ## 0.3.0
 
 ### Minor Changes

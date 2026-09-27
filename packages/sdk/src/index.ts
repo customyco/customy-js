@@ -54,6 +54,31 @@ type EventsOf<App extends CustomyAppTypes> = App["events"] extends EventMap ? Ap
 type MetersOf<App extends CustomyAppTypes> = App["meters"] extends string ? App["meters"] : string;
 type CapabilitiesOf<App extends CustomyAppTypes> = App["capabilities"] extends string ? App["capabilities"] : string;
 
+/**
+ * Lo que `createCustomy` lee del manifiesto de la app (`customy.app.json`):
+ * los productos que usa y sus scopes. Pasa el JSON tal cual.
+ */
+export type CustomyAppManifestScopes = Readonly<{
+    products?: ReadonlyArray<Readonly<{ product: string; scopes?: readonly string[] }>>;
+}>;
+
+/**
+ * Scopes por clave de producto del discovery a partir del manifiesto. Cada
+ * entrada del manifiesto nombra el producto por su audiencia
+ * (`customy-send`) o por su clave (`send`); una que no está en el discovery
+ * se ignora. Sin scopes declarados, el producto no se incluye.
+ */
+export function scopesFromManifest(manifest: CustomyAppManifestScopes | undefined, platform: CustomyPlatformConfiguration): Record<string, readonly string[]> {
+    const result: Record<string, readonly string[]> = {};
+    for (const entry of manifest?.products ?? []) {
+        if (!entry || typeof entry.product !== "string" || !Array.isArray(entry.scopes) || entry.scopes.length === 0) continue;
+        const key = Object.entries(platform.products).find(([name, product]) => product.audience === entry.product || name === entry.product || `customy-${name}` === entry.product)?.[0];
+        if (!key) continue;
+        result[key] = [...new Set([...(result[key] ?? []), ...entry.scopes.filter((scope): scope is string => typeof scope === "string" && scope.length > 0)])];
+    }
+    return result;
+}
+
 /** Opciones de Data que no son de conexión (cola, redacción, `beforeSend`, `onError`…). */
 export type CustomyDataSettings = Omit<DataOptions, keyof ProductClientOptions | "writeKey">;
 
@@ -62,8 +87,14 @@ export type CreateCustomyOptions = Readonly<{
     issuer: string;
     clientId: string;
     clientSecret: string;
-    /** Scopes por clave de producto del discovery (`send`, `crm`…). Sin entrada, los mínimos de cada paquete. */
+    /**
+     * Scopes por clave de producto del discovery (`send`, `crm`…). Mandan sobre
+     * los del manifiesto. Sin entrada ni manifiesto: los de cada paquete
+     * (Access pide en cada método el scope que necesita).
+     */
     scopes?: Readonly<Partial<Record<string, readonly string[]>>>;
+    /** Manifiesto de la app (`customy.app.json`): de él salen los scopes de cada producto que no estén en `scopes`. */
+    manifest?: CustomyAppManifestScopes;
     /** Discovery ya leído: evita pedirlo otra vez. */
     platform?: CustomyPlatformConfiguration;
     fetch?: typeof fetch;
@@ -76,6 +107,11 @@ export type CreateCustomyOptions = Readonly<{
     data?: CustomyDataSettings;
     /** Permite `http://` hacia loopback (desarrollo y tests). */
     allowLoopbackHttp?: boolean;
+    /**
+     * Permite `http://` hacia hosts privados (RFC 1918, `*.internal`, nombres de
+     * una etiqueta), nunca públicos. Lo recomendado es el nombre público https.
+     */
+    allowPrivateHttp?: boolean;
 }>;
 
 export type Customy<App extends CustomyAppTypes = CustomyAppTypes> = Readonly<{
@@ -103,14 +139,14 @@ export async function createCustomy<App extends CustomyAppTypes = CustomyAppType
         throw new CustomySdkError({ code: "SDK_CREDENTIALS_REQUIRED", service: "access", message: "createCustomy needs clientId and clientSecret" });
     }
     const platform = options.platform ?? await discoverPlatform(options.issuer, { fetch: options.fetch });
-    const byProduct: Record<string, readonly string[]> = {};
+    const byProduct: Record<string, readonly string[]> = scopesFromManifest(options.manifest, platform);
     for (const [key, value] of Object.entries(options.scopes ?? {})) if (value) byProduct[key] = value;
     const machineTokens = createMachineTokens({
         issuer: options.issuer, clientId: options.clientId, clientSecret: options.clientSecret, platform, scopes: byProduct, fetch: options.fetch,
     });
     const connection = (key: string): ProductClientOptions => ({
-        platform, machineTokens, scopes: options.scopes?.[key], fetch: options.fetch, timeoutMs: options.timeoutMs, retry: options.retry,
-        allowLoopbackHttp: options.allowLoopbackHttp,
+        platform, machineTokens, scopes: byProduct[key], fetch: options.fetch, timeoutMs: options.timeoutMs, retry: options.retry,
+        allowLoopbackHttp: options.allowLoopbackHttp, allowPrivateHttp: options.allowPrivateHttp,
     });
     const cache = new Map<string, unknown>();
     const once = <T>(key: string, build: () => T): T => {

@@ -6,7 +6,7 @@
  * APIs propias de un runtime: funciona en node, edge y navegador.
  */
 export { CustomySdkError, isCustomySdkError, readErrorEnvelope, type CustomySdkErrorOptions } from "./errors";
-export { normalizeIssuer, normalizeBaseUrl, buildUrl, type Query, type QueryValue } from "./url";
+export { normalizeIssuer, normalizeBaseUrl, buildUrl, isPrivateHost, type BaseUrlOptions, type Query, type QueryValue } from "./url";
 export {
     DEFAULT_RETRY_POLICY,
     backoffDelay,
@@ -18,8 +18,10 @@ export {
 } from "./retry";
 export { IDEMPOTENCY_HEADER, createIdempotencyKey, isValidIdempotencyKey } from "./idempotency";
 export {
+    callOptions,
     createTransport,
     type AccessTokenProvider,
+    type CallOptions,
     type HttpMethod,
     type RequestBody,
     type RequestOptions,

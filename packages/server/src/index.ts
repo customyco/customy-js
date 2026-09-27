@@ -6,6 +6,8 @@
  */
 export { createRemoteJwks, type RemoteJwks, type RemoteJwksOptions } from "./jwks";
 export {
+    ACCESS_UNAVAILABLE,
+    isAccessUnavailable,
     MAX_MACHINE_TOKEN_LIFETIME_SECONDS,
     createAccessTokenVerifier,
     createMachineTokenVerifier,
@@ -19,14 +21,18 @@ export {
 } from "./tokens";
 export {
     ACTOR_ASSERTION_HEADER,
+    assertActorAssertionSecret,
+    createActorAssertionVerifier,
     MAX_ASSERTION_TTL_SECONDS,
     signActorAssertion,
     verifyActorAssertion,
     type ActorAssertion,
     type ActorAssertionOptions,
+    type ActorAssertionVerifier,
 } from "./assertion";
 export {
     bearerToken,
+    createRequestVerifier,
     requestFromIncomingMessage,
     verifyIncomingMessage,
     verifyMachineRequest,

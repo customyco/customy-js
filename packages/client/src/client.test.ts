@@ -75,8 +75,8 @@ describe("sign-in flows", () => {
         const { fetch } = fakeFetch((_url, _init, index) => responses[index]!);
         const client = createCustomyClient({ fetch });
         expect(await client.signInWithEmail("a@example.com", "pw")).toEqual({ twoFactorRedirect: true });
-        expect(await client.signInWithEmail("a@example.com", "bad")).toEqual({ error: "Invalid email or password" });
-        expect(await client.signUp("Ana", "a@example.com", "pw")).toEqual({ error: "legacy" });
+        expect(await client.signInWithEmail("a@example.com", "bad")).toEqual({ error: "Invalid email or password", status: 401, code: "INVALID_EMAIL_OR_PASSWORD", retryable: false });
+        expect(await client.signUp("Ana", "a@example.com", "pw")).toEqual({ error: "legacy", status: 400, code: "HTTP_400", retryable: false });
     });
 
     it("reports a timed-out sign-in instead of hanging", async () => {
@@ -84,7 +84,7 @@ describe("sign-in flows", () => {
             init.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "TimeoutError" })));
         })) as unknown as typeof globalThis.fetch;
         const client = createCustomyClient({ fetch, signInTimeoutMs: 10 });
-        expect(await client.signInWithEmail("a@example.com", "pw")).toEqual({ error: "Request timed out. Try again." });
+        expect(await client.signInWithEmail("a@example.com", "pw")).toEqual({ error: "Request timed out. Try again.", status: 408, code: "SDK_TIMEOUT", retryable: true });
     });
 
     it("signs out, stops impersonation and switches organization through same-origin POSTs", async () => {

@@ -1,5 +1,19 @@
 # @customyai/server
 
+## 0.2.0
+
+### Minor Changes
+
+- - **401 frente a 503**: los verificadores devuelven `null` ante un token inválido y lanzan `CustomySdkError` `ACCESS_UNAVAILABLE` (status 503) cuando Access no puede decidir (JWKS inalcanzable o sin claves pasado `maxStaleMs`, introspección caída, 429 o 5xx). `verifyRequest` y `verifyMachineRequest` lo dejan pasar; `isAccessUnavailable` lo reconoce.
+  - Un `iat` en el futuro más allá de `issuedAtSkewSeconds` (60 s por defecto) se rechaza.
+  - El JWKS solo cuenta las claves que se importan de verdad: una malformada con `kid` no aparece en `kids` ni se usa, y un JWKS sin ninguna utilizable es `SDK_JWKS_INVALID`.
+  - El secreto de la assertion se valida al construir: `createRequestVerifier`, `createActorAssertionVerifier` y `assertActorAssertionSecret` lanzan `SDK_ASSERTION_SECRET_INVALID` al arrancar; `verifyRequest` ya no lanza por petición con un secreto inválido (devuelve `null`).
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

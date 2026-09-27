@@ -5,10 +5,24 @@
  */
 import { connectProduct, resolveBearer, type ProductClientOptions, type Query, type RequestOptions, type Transport } from "@customyai/core";
 import type {
+  ApprovalEvent,
+  BrandKit,
+  BrandKitInput,
   CancelNotificationResult,
+  ContentCard,
+  ContentCardInput,
+  ContentCardStats,
+  ContentCardStatus,
+  ContentCardTestResult,
   ConversionInput,
   InAppMessage,
   InAppMessageInput,
+  InAppStats,
+  InAppTemplate,
+  InAppTemplateInput,
+  InAppTestResult,
+  EngagementTestEvent,
+  SubscriberMatch,
   InboxAction,
   InboxCounts,
   InboxPage,
@@ -28,6 +42,8 @@ import type {
   SubscriberInput,
   SubscriberPreferences,
   SubscriberToken,
+  TemplatePreview,
+  TemplatePreviewInput,
 } from "./engage-types";
 import { CustomySendError, sendCall } from "./errors";
 import type {
@@ -67,13 +83,26 @@ export const SEND_SCOPES = [
   "send:subscribers:read", "send:subscribers:manage",
   "send:inbox:read", "send:inbox:manage",
   "send:in_app:read", "send:in_app:manage",
+  "send:content_cards:read", "send:content_cards:manage",
 ] as const;
 export type SendScope = (typeof SEND_SCOPES)[number];
+
+/**
+ * Versión de la API que habla este SDK (cabecera `Customy-Version`). Send no
+ * cambia la forma de una fecha ya publicada: las rupturas salen con otra fecha.
+ */
+export const SEND_API_VERSION = "2026-09-27";
 
 export type SendOptions = ProductClientOptions;
 
 /** Opciones de una operación que crea algo: la misma clave hace el reintento seguro. */
-export type IdempotentOptions = Readonly<{ idempotencyKey?: string; signal?: AbortSignal }>;
+export type IdempotentOptions = Readonly<{ idempotencyKey?: string; signal?: AbortSignal; timeoutMs?: number }>;
+
+/**
+ * Quién actúa, cuando la llamada la hace un servicio en nombre de una persona
+ * (cabecera `x-customy-actor`): Send exige que quien aprueba no sea quien creó.
+ */
+export type ActorOptions = Readonly<{ actor?: string }>;
 
 export type Attachment = { content: Uint8Array; contentType: string; filename: string | null };
 
@@ -100,21 +129,47 @@ export type CustomySend = ReturnType<typeof createSend>;
  * ```
  */
 export function createSend(options: SendOptions) {
-  const connection = connectProduct(options, { key: "send", audience: SEND_AUDIENCE, defaultBaseUrl: SEND_DEFAULT_BASE_URL });
+  // `Customy-Version` en cada petición; una cabecera propia con el mismo nombre la sustituye.
+  const connection = connectProduct(
+    { ...options, headers: { "customy-version": SEND_API_VERSION, ...options.headers } },
+    { key: "send", audience: SEND_AUDIENCE, defaultBaseUrl: SEND_DEFAULT_BASE_URL },
+  );
   const http: Transport = connection.transport;
 
   const call = <T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, request: RequestOptions = {}) =>
     sendCall(async () => (await http.request<T>(method, path, request)).data);
-  const created = <T>(path: string, body: unknown, request: IdempotentOptions = {}) =>
-    call<T>("POST", path, { body, idempotencyKey: request.idempotencyKey ?? true, signal: request.signal });
+  const created = <T>(path: string, body: unknown, request: IdempotentOptions & ActorOptions = {}) =>
+    call<T>("POST", path, { body, idempotencyKey: request.idempotencyKey ?? true, signal: request.signal, timeoutMs: request.timeoutMs, ...actorHeader(request) });
   const q = (params: object): Query => params as Query;
+  const actorHeader = (request: ActorOptions = {}): { headers?: Record<string, string> } => (request.actor ? { headers: { "x-customy-actor": request.actor } } : {});
+  /** Flujo de publicación (`submit → approve → activate`) de mensajes in-app y tarjetas. */
+  const lifecycle = <T, Test, Stats>(base: string) => ({
+    /** A revisión (`in_review`). */
+    submit: (id: string, request?: ActorOptions) => call<T>("POST", `${base}/${enc(id)}/submit`, actorHeader(request)),
+    /** Aprobado (`approved`): por alguien distinto de quien lo creó (403 `approval_same_actor`). */
+    approve: (id: string, request?: ActorOptions) => call<T>("POST", `${base}/${enc(id)}/approve`, actorHeader(request)),
+    /** Vuelve a borrador con el motivo. */
+    reject: (id: string, reason?: string, request?: ActorOptions) =>
+      call<T>("POST", `${base}/${enc(id)}/reject`, { body: reason !== undefined ? { reason } : {}, ...actorHeader(request) }),
+    /** Activo; si la cuenta exige aprobación y no está aprobado, 409 `approval_required`. */
+    activate: (id: string, request?: ActorOptions) => call<T>("POST", `${base}/${enc(id)}/activate`, actorHeader(request)),
+    pause: (id: string, request?: ActorOptions) => call<T>("POST", `${base}/${enc(id)}/pause`, actorHeader(request)),
+    /** Envío de prueba: esa persona lo ve en su próxima lectura durante 24 h (marcado `test`). */
+    test: (id: string, input: { subscriber: string; variant_id?: string }) => call<Test>("POST", `${base}/${enc(id)}/test`, { body: input }),
+    /** Impresiones, clics por botón, conversiones, variantes, grupo de control y encuestas (y `test`, lo de quien prueba). */
+    stats: (id: string) => call<Stats>("GET", `${base}/${enc(id)}/stats`),
+    /** Los últimos eventos de quien prueba (`limit` ≤ 200, 50 por defecto), del más reciente. */
+    testEvents: (id: string, params: { limit?: number } = {}) => call<List<EngagementTestEvent>>("GET", `${base}/${enc(id)}/test-events`, { query: q(params) }),
+    /** Historial de publicación: quién lo envió, aprobó, rechazó (con motivo), activó o pausó. */
+    approvals: (id: string) => call<List<ApprovalEvent>>("GET", `${base}/${enc(id)}/approvals`),
+  });
 
   /** Bytes (adjuntos, .eml): sin reintentos, el cuerpo puede ser grande. */
   async function binary(path: string): Promise<Attachment> {
     const url = `${connection.baseUrl}${path}`;
     let response: Response;
     try {
-      response = await connection.fetch(url, { method: "GET", headers: { authorization: `Bearer ${await resolveBearer(connection.credential, "send")}` } });
+      response = await connection.fetch(url, { method: "GET", headers: { authorization: `Bearer ${await resolveBearer(connection.credential, "send")}`, "customy-version": SEND_API_VERSION } });
     } catch (error) {
       if (error instanceof CustomySendError) throw error;
       throw new CustomySendError({ code: "SDK_NETWORK_ERROR", status: 0, cause: error });
@@ -172,6 +227,11 @@ export function createSend(options: SendOptions) {
       remove: (id: string) => call<{ id: string; deleted: boolean }>("DELETE", `/api/templates/${enc(id)}`),
       /** Vista previa con estas variables, sin mandar nada. */
       render: (id: string, variables: Record<string, unknown> = {}) => call<RenderedTemplate>("POST", `/api/templates/${enc(id)}/render`, { body: { variables } }),
+      /**
+       * Personalización (`{{ first_name }}`, `{{ attributes.plan | default: "free" }}`) de un texto o de un
+       * contenido in-app para una persona o unos atributos, sin mandar nada.
+       */
+      preview: (input: TemplatePreviewInput) => call<TemplatePreview>("POST", "/api/templates/preview", { body: input }),
     },
 
     domains: {
@@ -235,6 +295,8 @@ export function createSend(options: SendOptions) {
     /** Las personas: zona horaria, idioma, horas de silencio y preferencias por tema y canal. */
     subscribers: {
       get: (id: string) => call<Subscriber>("GET", `/api/subscribers/${enc(id)}`),
+      /** Personas con ese atributo exacto (`email` sin distinguir mayúsculas; ≤ 20), con sus dispositivos. */
+      find: (params: { attribute: string; value: string; limit?: number }) => call<List<SubscriberMatch>>("GET", "/api/subscribers", { query: q(params) }),
       /** Solo cambia lo que viene; `null` borra. */
       put: (id: string, input: SubscriberInput) => call<Subscriber>("PUT", `/api/subscribers/${enc(id)}`, { body: input }),
       preferences: {
@@ -267,13 +329,41 @@ export function createSend(options: SendOptions) {
       createToken: (subscriber: string, params: { ttl?: number } = {}) => call<SubscriberToken>("POST", "/api/inbox/tokens", { body: { subscriber, ...params } }),
     },
 
-    /** Mensajes dentro de la app (modal, banner, pantalla completa, tarjeta). */
+    /** Mensajes dentro de la app (modal, banner, pantalla completa, tarjeta, slideup, tooltip, HTML). */
     inApp: {
-      create: (input: InAppMessageInput, request?: IdempotentOptions) => created<InAppMessage>("/api/in-app/messages", input, request),
+      create: (input: InAppMessageInput, request?: IdempotentOptions & ActorOptions) => created<InAppMessage>("/api/in-app/messages", input, request),
       list: (params: { status?: InAppMessage["status"]; cursor?: string; limit?: number } = {}) => call<List<InAppMessage>>("GET", "/api/in-app/messages", { query: q(params) }),
       get: (id: string) => call<InAppMessage>("GET", `/api/in-app/messages/${enc(id)}`),
-      update: (id: string, patch: Partial<InAppMessageInput>) => call<InAppMessage>("PATCH", `/api/in-app/messages/${enc(id)}`, { body: patch }),
+      update: (id: string, patch: Partial<InAppMessageInput>, request?: ActorOptions) => call<InAppMessage>("PATCH", `/api/in-app/messages/${enc(id)}`, { body: patch, ...actorHeader(request) }),
       archive: (id: string) => call<{ object: "in_app_message"; id: string; archived: boolean }>("DELETE", `/api/in-app/messages/${enc(id)}`),
+      ...lifecycle<InAppMessage, InAppTestResult, InAppStats>("/api/in-app/messages"),
+      /** Plantillas: las de Send (`builtin`, solo lectura) y las de la cuenta. */
+      templates: {
+        list: () => call<List<InAppTemplate>>("GET", "/api/in-app/templates"),
+        get: (id: string) => call<InAppTemplate>("GET", `/api/in-app/templates/${enc(id)}`),
+        create: (input: InAppTemplateInput) => call<InAppTemplate>("POST", "/api/in-app/templates", { body: input }),
+        update: (id: string, patch: Partial<InAppTemplateInput>) => call<InAppTemplate>("PATCH", `/api/in-app/templates/${enc(id)}`, { body: patch }),
+        remove: (id: string) => call<{ object: "in_app_template"; id: string; deleted: boolean }>("DELETE", `/api/in-app/templates/${enc(id)}`),
+      },
+    },
+
+    /** Kits de marca: colores, radio, fuente y logo que Send mezcla en el estilo de los mensajes. */
+    brandKits: {
+      list: () => call<List<BrandKit>>("GET", "/api/brand-kits"),
+      get: (id: string) => call<BrandKit>("GET", `/api/brand-kits/${enc(id)}`),
+      create: (input: BrandKitInput) => call<BrandKit>("POST", "/api/brand-kits", { body: input }),
+      update: (id: string, patch: Partial<BrandKitInput>) => call<BrandKit>("PATCH", `/api/brand-kits/${enc(id)}`, { body: patch }),
+      remove: (id: string) => call<{ object: "brand_kit"; id: string; deleted: boolean }>("DELETE", `/api/brand-kits/${enc(id)}`),
+    },
+
+    /** Tarjetas de contenido: un feed persistente dentro de la app (no son notificaciones). */
+    contentCards: {
+      create: (input: ContentCardInput, request?: IdempotentOptions & ActorOptions) => created<ContentCard>("/api/content-cards", input, request),
+      list: (params: { status?: ContentCardStatus; cursor?: string; limit?: number } = {}) => call<List<ContentCard>>("GET", "/api/content-cards", { query: q(params) }),
+      get: (id: string) => call<ContentCard>("GET", `/api/content-cards/${enc(id)}`),
+      update: (id: string, patch: Partial<ContentCardInput>, request?: ActorOptions) => call<ContentCard>("PATCH", `/api/content-cards/${enc(id)}`, { body: patch, ...actorHeader(request) }),
+      remove: (id: string) => call<{ object: "content_card"; id: string; deleted?: boolean; archived?: boolean }>("DELETE", `/api/content-cards/${enc(id)}`),
+      ...lifecycle<ContentCard, ContentCardTestResult, ContentCardStats>("/api/content-cards"),
     },
   };
 }

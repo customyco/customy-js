@@ -5,11 +5,13 @@
  * Bindings de UI como subrutas: `./react`, `./native`, `./native/react`.
  */
 export {
+    authFailureFromResponse,
     browserAuthBase,
     createCustomyClient,
     createSocialSignInUrl,
     fetchRealtimeTicket,
     resolveCustomyAccessClientConfig,
+    type AuthActionFailure,
     type CustomyAccessClientConfig,
     type CustomyAccessClientEnv,
     type CustomyActor,
