@@ -1,7 +1,7 @@
 {
-  "name": "@customyai/customy-sdk",
-  "version": "0.2.0",
-  "description": "TypeScript umbrella SDK for all Customy products and platform services",
+  "name": "@customyai/sdk",
+  "version": "0.1.0",
+  "description": "The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing and Links (plus any discovered product) from their own packages. Server only.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
   "repository": {
@@ -14,11 +14,10 @@
   },
   "keywords": [
     "customy",
-    "ai",
-    "agent",
     "sdk",
-    "api",
-    "client"
+    "platform",
+    "machine-tokens",
+    "server"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
@@ -26,6 +25,19 @@
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
+      "edge-light": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "workerd": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "worker": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "browser": null,
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.mjs"
@@ -35,29 +47,13 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./server": {
-      "import": {
-        "types": "./dist/server.d.ts",
-        "default": "./dist/server.mjs"
-      },
-      "require": {
-        "types": "./dist/server.d.cts",
-        "default": "./dist/server.cjs"
-      }
-    },
     "./package.json": "./package.json"
-  },
-  "typesVersions": {
-    "*": {
-      "server": [
-        "./dist/server.d.ts"
-      ]
-    }
   },
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20"
@@ -68,15 +64,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/customy-access": "^0.7.0",
-    "@customyai/links-sdk": "^0.2.0",
-    "@customyai/send-sdk": "^1.1.0"
+    "@customyai/access": "^0.1.0",
+    "@customyai/billing": "^0.1.0",
+    "@customyai/core": "^0.1.0",
+    "@customyai/data": "^0.1.0",
+    "@customyai/links": "^0.1.0",
+    "@customyai/send": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
     "vitest": "^4.1.11",
-    "tsup": "^8.0.0",
-    "@types/node": "^20.14.2"
+    "tsup": "^8.0.0"
   },
   "publishConfig": {
     "access": "public",

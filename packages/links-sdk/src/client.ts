@@ -1,13 +1,17 @@
 /**
- * CustomyLinks — cliente HTTP tipado de la API pública de Customy Links.
+ * CustomyLinks — cliente de la API pública de Customy Links.
+ *
+ * @deprecated Usa `createLinks` de `@customyai/links`. Esta clase es su
+ * adaptador durante un ciclo major: el transporte, los reintentos con
+ * `Retry-After` y los tokens de Access son los de `@customyai/core`; aquí se
+ * conserva la forma de 0.x (incluido `CustomyLinksError` con `details`).
  *
  *   const links = new CustomyLinks({ apiKey: "cl_live_…" });
  *   const link = await links.links.create({ destinationUrl: "https://…" });
- *   await links.track.sale({ externalId: "user_1", amount: 49.9, currency: "USD" });
- *
- * Sin dependencias: sólo `fetch`. Reintenta 429/5xx y fallos de red con
- * espera exponencial (2 reintentos por defecto) y respeta `Retry-After`.
  */
+import { CustomySdkError } from "@customyai/core";
+import { createLinks, type CustomyLinks as LinksClient } from "@customyai/links";
+import { warnDeprecated } from "./deprecation";
 import type {
   AnalyticsParams,
   Conversion,
@@ -30,8 +34,11 @@ import type {
   WebhookUpdate,
 } from "./types";
 
+export { shortUrlOf } from "@customyai/links";
+
 export const DEFAULT_BASE_URL = "https://links.customy.ai";
 
+/** @deprecated `@customyai/links` lanza su `CustomyLinksError` (un `CustomySdkError`); aquí se traduce a esta forma. */
 export class CustomyLinksError extends Error {
   readonly status: number;
   readonly code: string;
@@ -45,8 +52,21 @@ export class CustomyLinksError extends Error {
   }
 }
 
-type Query = Record<string, string | number | boolean | undefined | null>;
+/** Códigos de siempre: `NETWORK_ERROR` sin respuesta (o por tiempo), el `code` de la API o `HTTP_<estado>`. */
+function toLegacyLinksError(error: unknown): unknown {
+  if (error instanceof CustomyLinksError || !(error instanceof CustomySdkError)) return error;
+  const network = error.code === "SDK_NETWORK_ERROR" || error.code === "SDK_TIMEOUT";
+  const body = error.body && typeof error.body === "object" ? error.body as { details?: unknown } : undefined;
+  const legacy = new CustomyLinksError(network ? 0 : error.status, network ? "NETWORK_ERROR" : error.code, error.message, body?.details);
+  (legacy as { cause?: unknown }).cause = error;
+  return legacy;
+}
 
+const clients = new WeakMap<object, LinksClient>();
+/** Cliente sin credencial para `/status.json`: 0.x nunca enviaba la llave a la página de estado. */
+const publicClients = new WeakMap<object, LinksClient>();
+
+/** @deprecated Usa `createLinks` de `@customyai/links`. */
 export class CustomyLinks {
   private readonly baseUrl: string;
   private readonly apiKey: string | (() => Promise<string>);
@@ -56,149 +76,113 @@ export class CustomyLinks {
 
   constructor(config: CustomyLinksConfig) {
     if (!config?.apiKey) throw new Error("CustomyLinks: apiKey is required (cl_live_…, cl_test_… or an Access token provider)");
+    warnDeprecated("@customyai/links-sdk", "use createLinks from @customyai/links.");
     this.apiKey = config.apiKey;
     this.baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
     this.timeoutMs = config.timeoutMs ?? 15_000;
     this.fetchFn = config.fetch ?? globalThis.fetch;
     this.maxRetries = config.maxRetries ?? 2;
     if (!this.fetchFn) throw new Error("CustomyLinks: no fetch available; pass one in config.fetch");
+    const apiKey = this.apiKey;
+    const connection = { baseUrl: this.baseUrl, fetch: this.fetchFn, timeoutMs: this.timeoutMs, retry: { maxRetries: this.maxRetries }, allowLoopbackHttp: true };
+    clients.set(this, createLinks({ ...connection, accessToken: typeof apiKey === "function" ? () => apiKey() : apiKey }));
+    publicClients.set(this, createLinks(connection));
   }
 
   // ── Enlaces ─────────────────────────────────────────────────────────────
   readonly links = {
-    list: (params: ListLinksParams = {}) => this.request<Page<Link>>("GET", "/api/links", { query: params }),
-    get: (id: string) => this.request<Link>("GET", `/api/links/${enc(id)}`),
-    create: (input: LinkCreate) => this.request<Link>("POST", "/api/links", { body: input }),
-    update: (id: string, patch: LinkWritable) => this.request<Link>("PATCH", `/api/links/${enc(id)}`, { body: patch }),
-    archive: (id: string) => this.request<Link>("POST", `/api/links/${enc(id)}/archive`),
-    delete: (id: string) => this.request<void>("DELETE", `/api/links/${enc(id)}`),
-    duplicate: (id: string) => this.request<Link>("POST", `/api/links/${enc(id)}/duplicate`),
-    analytics: (id: string, params: AnalyticsParams = {}) => this.request<LinkAnalytics>("GET", `/api/links/${enc(id)}/analytics`, { query: params }),
-    conversions: (id: string) => this.request<{ items: Conversion[] }>("GET", `/api/links/${enc(id)}/conversions`).then((r) => r.items),
-    suggestSlug: (domain?: string) => this.request<{ slug: string; domain: string }>("GET", "/api/links/slug/suggest", { query: { domain } }),
-    bulkCreate: (links: LinkCreate[]) => this.request<{ created: number; failed: number; results: Array<{ index: number; ok: boolean; link?: Link; error?: string; code?: string }> }>("POST", "/api/links/bulk", { body: { links } }),
+    list: (params: ListLinksParams = {}) => this.request<Page<Link>>((c) => c.links.list(params)),
+    get: (id: string) => this.request<Link>((c) => c.links.get(id)),
+    create: (input: LinkCreate) => this.request<Link>((c) => c.links.create(input)),
+    update: (id: string, patch: LinkWritable) => this.request<Link>((c) => c.links.update(id, patch)),
+    archive: (id: string) => this.request<Link>((c) => c.links.archive(id)),
+    delete: (id: string) => this.request<void>(async (c) => { await c.links.delete(id); }),
+    duplicate: (id: string) => this.request<Link>((c) => c.links.duplicate(id)),
+    analytics: (id: string, params: AnalyticsParams = {}) => this.request<LinkAnalytics>((c) => c.links.analytics(id, params)),
+    conversions: (id: string) => this.request<Conversion[]>((c) => c.links.conversions(id)),
+    suggestSlug: (domain?: string) => this.request<{ slug: string; domain: string }>((c) => c.links.suggestSlug(domain)),
+    bulkCreate: (links: LinkCreate[]) => this.request<{ created: number; failed: number; results: Array<{ index: number; ok: boolean; link?: Link; error?: string; code?: string }> }>((c) => c.links.bulkCreate(links)),
     bulkUpdate: (input: { ids: string[]; status?: "active" | "archived"; groupId?: string | null; addTagIds?: string[]; removeTagIds?: string[]; expiresAt?: string | null }) =>
-      this.request<{ requested: number; updated: number; missing: number }>("PATCH", "/api/links/bulk", { body: input }),
-    bulkArchive: (ids: string[]) => this.request<{ requested: number; deleted: number }>("DELETE", "/api/links/bulk", { body: { ids } }),
+      this.request<{ requested: number; updated: number; missing: number }>((c) => c.links.bulkUpdate(input)),
+    bulkArchive: (ids: string[]) => this.request<{ requested: number; deleted: number }>((c) => c.links.bulkArchive(ids)),
     importCsv: (csv: string, options: { domain?: string; groupId?: string } = {}) =>
-      this.request<{ created: number; failed: number; truncated: boolean; results: Array<{ line: number; ok: boolean; slug?: string; error?: string; code?: string }> }>("POST", "/api/links/import", { body: { csv, ...options } }),
+      this.request<{ created: number; failed: number; truncated: boolean; results: Array<{ line: number; ok: boolean; slug?: string; error?: string; code?: string }> }>((c) => c.links.importCsv(csv, options)),
     /** El CSV crudo de clicks de un enlace. */
-    exportCsv: (id: string, days = 30) => this.requestText("GET", `/api/links/${enc(id)}/analytics/export.csv`, { query: { days } }),
+    exportCsv: (id: string, days = 30) => this.requestText((c) => c.links.exportCsv(id, days)),
   };
 
   // ── Analítica del workspace ─────────────────────────────────────────────
   readonly analytics = {
-    summary: (days = 30) => this.request<Record<string, unknown>>("GET", "/api/analytics/summary", { query: { days } }),
-    exportCsv: (days = 30) => this.requestText("GET", "/api/analytics/export.csv", { query: { days } }),
+    summary: (days = 30) => this.request<Record<string, unknown>>((c) => c.analytics.summary(days)),
+    exportCsv: (days = 30) => this.requestText((c) => c.analytics.exportCsv(days)),
   };
 
   // ── Conversiones ────────────────────────────────────────────────────────
   readonly track = {
-    lead: (input: TrackLead) => this.request<Conversion>("POST", "/api/track/lead", { body: input }),
-    sale: (input: TrackSale) => this.request<Conversion>("POST", "/api/track/sale", { body: input }),
+    lead: (input: TrackLead) => this.request<Conversion>((c) => c.track.lead(input)),
+    sale: (input: TrackSale) => this.request<Conversion>((c) => c.track.sale(input)),
   };
 
   // ── Dominios ────────────────────────────────────────────────────────────
   readonly domains = {
-    list: () => this.request<{ items: Domain[] }>("GET", "/api/domains").then((r) => r.items),
-    add: (domain: string) => this.request<Domain>("POST", "/api/domains", { body: { domain } }),
-    verify: (id: string) => this.request<Domain>("POST", `/api/domains/${enc(id)}/verify`),
-    setDefault: (id: string) => this.request<Domain>("POST", `/api/domains/${enc(id)}/default`),
-    remove: (id: string) => this.request<void>("DELETE", `/api/domains/${enc(id)}`),
+    list: () => this.request<Domain[]>((c) => c.domains.list()),
+    add: (domain: string) => this.request<Domain>((c) => c.domains.add(domain)),
+    verify: (id: string) => this.request<Domain>((c) => c.domains.verify(id)),
+    setDefault: (id: string) => this.request<Domain>((c) => c.domains.setDefault(id)),
+    remove: (id: string) => this.request<void>(async (c) => { await c.domains.remove(id); }),
   };
 
   // ── Webhooks ────────────────────────────────────────────────────────────
   readonly webhooks = {
-    list: () => this.request<{ items: Webhook[]; events: string[] }>("GET", "/api/webhooks"),
-    get: (id: string) => this.request<Webhook>("GET", `/api/webhooks/${enc(id)}`),
-    create: (input: WebhookCreate) => this.request<Webhook>("POST", "/api/webhooks", { body: input }),
-    update: (id: string, patch: WebhookUpdate) => this.request<Webhook>("PATCH", `/api/webhooks/${enc(id)}`, { body: patch }),
-    rotateSecret: (id: string) => this.request<Webhook>("POST", `/api/webhooks/${enc(id)}/rotate-secret`),
-    test: (id: string) => this.request<{ queued: boolean }>("POST", `/api/webhooks/${enc(id)}/test`),
-    remove: (id: string) => this.request<void>("DELETE", `/api/webhooks/${enc(id)}`),
-    deliveries: (id: string) => this.request<{ items: Array<Record<string, unknown>> }>("GET", `/api/webhooks/${enc(id)}/deliveries`).then((r) => r.items),
-    retryDelivery: (id: string, deliveryId: string) => this.request<{ queued: boolean }>("POST", `/api/webhooks/${enc(id)}/deliveries/${enc(deliveryId)}/retry`),
+    list: () => this.request<{ items: Webhook[]; events: string[] }>((c) => c.webhooks.list()),
+    get: (id: string) => this.request<Webhook>((c) => c.webhooks.get(id)),
+    create: (input: WebhookCreate) => this.request<Webhook>((c) => c.webhooks.create(input)),
+    update: (id: string, patch: WebhookUpdate) => this.request<Webhook>((c) => c.webhooks.update(id, patch)),
+    rotateSecret: (id: string) => this.request<Webhook>((c) => c.webhooks.rotateSecret(id)),
+    test: (id: string) => this.request<{ queued: boolean }>((c) => c.webhooks.test(id)),
+    remove: (id: string) => this.request<void>(async (c) => { await c.webhooks.remove(id); }),
+    deliveries: (id: string) => this.request<Record<string, unknown>[]>((c) => c.webhooks.deliveries(id)),
+    retryDelivery: (id: string, deliveryId: string) => this.request<{ queued: boolean }>((c) => c.webhooks.retryDelivery(id, deliveryId)),
   };
 
   // ── Organización ────────────────────────────────────────────────────────
   readonly utmPresets = {
-    list: () => this.request<{ items: UtmPreset[] }>("GET", "/api/utm-presets").then((r) => r.items),
-    create: (input: Omit<UtmPreset, "id">) => this.request<UtmPreset>("POST", "/api/utm-presets", { body: input }),
-    update: (id: string, patch: Partial<Omit<UtmPreset, "id">>) => this.request<UtmPreset>("PATCH", `/api/utm-presets/${enc(id)}`, { body: patch }),
-    remove: (id: string) => this.request<void>("DELETE", `/api/utm-presets/${enc(id)}`),
+    list: () => this.request<UtmPreset[]>((c) => c.utmPresets.list()),
+    create: (input: Omit<UtmPreset, "id">) => this.request<UtmPreset>((c) => c.utmPresets.create(input)),
+    update: (id: string, patch: Partial<Omit<UtmPreset, "id">>) => this.request<UtmPreset>((c) => c.utmPresets.update(id, patch)),
+    remove: (id: string) => this.request<void>(async (c) => { await c.utmPresets.remove(id); }),
   };
   readonly tags = {
-    list: () => this.request<{ items: Tag[] }>("GET", "/api/tags").then((r) => r.items),
-    create: (input: { name: string; color?: string | null }) => this.request<Tag>("POST", "/api/tags", { body: input }),
-    remove: (id: string) => this.request<void>("DELETE", `/api/tags/${enc(id)}`),
+    list: () => this.request<Tag[]>((c) => c.tags.list()),
+    create: (input: { name: string; color?: string | null }) => this.request<Tag>((c) => c.tags.create(input)),
+    remove: (id: string) => this.request<void>(async (c) => { await c.tags.remove(id); }),
   };
   readonly groups = {
-    list: () => this.request<{ items: Group[] }>("GET", "/api/groups").then((r) => r.items),
-    create: (input: { name: string; description?: string | null }) => this.request<Group>("POST", "/api/groups", { body: input }),
-    remove: (id: string) => this.request<void>("DELETE", `/api/groups/${enc(id)}`),
+    list: () => this.request<Group[]>((c) => c.groups.list()),
+    create: (input: { name: string; description?: string | null }) => this.request<Group>((c) => c.groups.create(input)),
+    remove: (id: string) => this.request<void>(async (c) => { await c.groups.remove(id); }),
   };
 
   /** Estado público del servicio (no requiere llave). */
-  status = () => this.request<ServiceStatus>("GET", "/status.json", { auth: false });
+  status = () => this.request<ServiceStatus>(() => publicClients.get(this)!.status());
 
-  // ── Transporte ──────────────────────────────────────────────────────────
-  private async request<T>(method: string, path: string, options: { query?: Query; body?: unknown; auth?: boolean } = {}): Promise<T> {
-    const res = await this.send(method, path, options);
-    if (res.status === 204) return undefined as T;
-    const text = await res.text();
-    return (text ? JSON.parse(text) : undefined) as T;
-  }
-
-  private async requestText(method: string, path: string, options: { query?: Query } = {}): Promise<string> {
-    const res = await this.send(method, path, options);
-    return res.text();
-  }
-
-  private async send(method: string, path: string, options: { query?: Query; body?: unknown; auth?: boolean }): Promise<Response> {
-    const url = new URL(this.baseUrl + path);
-    for (const [k, v] of Object.entries(options.query ?? {})) if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
-    const headers: Record<string, string> = { accept: "application/json", "user-agent": "customyai-links-sdk/0.1.0" };
-    if (options.auth !== false) headers.authorization = `Bearer ${typeof this.apiKey === "function" ? await this.apiKey() : this.apiKey}`;
-    if (options.body !== undefined) headers["content-type"] = "application/json";
-
-    let attempt = 0;
-    for (;;) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-      let res: Response | null = null;
-      let networkError: unknown = null;
-      try {
-        res = await this.fetchFn(url.toString(), { method, headers, body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: controller.signal });
-      } catch (err) {
-        networkError = err;
-      } finally {
-        clearTimeout(timer);
-      }
-      const retryable = networkError !== null || (res !== null && (res.status === 429 || res.status >= 500));
-      if (retryable && attempt < this.maxRetries) {
-        const retryAfter = res ? Number(res.headers.get("retry-after")) : NaN;
-        const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 300 * 2 ** attempt;
-        attempt += 1;
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
-        continue;
-      }
-      if (networkError !== null || res === null) {
-        throw new CustomyLinksError(0, "NETWORK_ERROR", networkError instanceof Error ? networkError.message : "network error");
-      }
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string; message?: string; details?: unknown };
-        throw new CustomyLinksError(res.status, body.code ?? `HTTP_${res.status}`, body.message ?? body.error ?? `HTTP ${res.status}`, body.details);
-      }
-      return res;
+  // ── Transporte: el de `@customyai/links`, con los errores de siempre ────
+  /** Traduce los errores a `CustomyLinksError`. Los métodos sin cuerpo (204) esperan la llamada y resuelven `undefined`, como en 0.x (`@customyai/links` da `null`). */
+  private async request<T>(operation: (client: LinksClient) => Promise<T>): Promise<T> {
+    try {
+      return await operation(this.send());
+    } catch (error) {
+      throw toLegacyLinksError(error);
     }
   }
-}
 
-function enc(value: string): string {
-  return encodeURIComponent(value);
-}
+  private async requestText(operation: (client: LinksClient) => Promise<string>): Promise<string> {
+    return this.request(operation);
+  }
 
-/** La URL corta de un enlace, tal como la ve el visitante. */
-export function shortUrlOf(link: Pick<Link, "domain" | "slug">): string {
-  return `https://${link.domain}/${link.slug}`;
+  private send(): LinksClient {
+    const client = clients.get(this);
+    if (!client) throw new Error("CustomyLinks: client not initialised");
+    return client;
+  }
 }

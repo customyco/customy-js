@@ -1,0 +1,120 @@
+{
+  "name": "@customyai/client",
+  "version": "0.1.1",
+  "description": "Customy browser client: session, sign-in, MFA, passkeys, active organization, capabilities and account linking over same-origin HttpOnly cookies, with React, native and native React bindings as subpaths. Never takes server secrets.",
+  "license": "MIT",
+  "author": "Customy <hello@customy.ai>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/customyco/customy-js.git",
+    "directory": "packages/client"
+  },
+  "bugs": {
+    "url": "https://github.com/customyco/customy-js/issues"
+  },
+  "keywords": [
+    "customy",
+    "sdk",
+    "auth",
+    "session",
+    "browser",
+    "react",
+    "react-native"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.mjs"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./native": {
+      "import": {
+        "types": "./dist/native.d.ts",
+        "default": "./dist/native.mjs"
+      },
+      "require": {
+        "types": "./dist/native.d.cts",
+        "default": "./dist/native.cjs"
+      }
+    },
+    "./native/react": {
+      "import": {
+        "types": "./dist/native/react.d.ts",
+        "default": "./dist/native/react.mjs"
+      },
+      "require": {
+        "types": "./dist/native/react.d.cts",
+        "default": "./dist/native/react.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "react": [
+        "./dist/react.d.ts"
+      ],
+      "native": [
+        "./dist/native.d.ts"
+      ],
+      "native/react": [
+        "./dist/native/react.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@customyai/core": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.11",
+    "tsup": "^8.0.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.2.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

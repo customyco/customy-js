@@ -1,8 +1,9 @@
 /**
  * @customyai/customy-access/edge
  *
- * Edge-runtime compatible utilities for Customy Access.
- * Designed for Vercel Edge, Cloudflare Workers, Deno Deploy, etc.
+ * @deprecated Usa `createEdgeClient` de `@customyai/web`: este módulo es su
+ * adaptador (misma verificación con Web Crypto, JWKS cacheado y rotado) y
+ * conserva `authUrl` opcional de 0.x.
  *
  * @example
  * ```ts
@@ -17,10 +18,10 @@
  * const { isValid, user } = await customy.verifySession(token);
  * ```
  */
+import { createEdgeClient as webEdgeClient, type VerifyResult } from "@customyai/web";
+import { warnDeprecated } from "./deprecation";
 
-import { jwtVerify, createRemoteJWKSet } from "jose";
-
-// ─── Types ──────────────────────────────────────────────────────
+export type { VerifyResult } from "@customyai/web";
 
 export interface CustomyEdgeConfig {
     /** Publishable key for your Customy Access project */
@@ -29,46 +30,12 @@ export interface CustomyEdgeConfig {
     authUrl?: string;
 }
 
-export interface VerifyResult {
-    isValid: boolean;
-    user: Record<string, unknown> | null;
-    error?: unknown;
-}
-
-// ─── Edge Client ────────────────────────────────────────────────
-
-export const createEdgeClient = (config: CustomyEdgeConfig) => {
-    const jwksUrl = new URL("/api/auth/jwks", config.authUrl || "http://localhost:4001");
-    const JWKS = createRemoteJWKSet(jwksUrl);
-
-    return {
-        /**
-         * Verify a session JWT using asymmetric cryptography (no DB call).
-         * Safe for edge runtimes — only uses Web Crypto API.
-         */
-        verifySession: async (token: string): Promise<VerifyResult> => {
-            try {
-                const { payload } = await jwtVerify(token, JWKS, { issuer: "customy" });
-                return { isValid: true, user: payload as Record<string, unknown> };
-            } catch (err) {
-                return { isValid: false, user: null, error: err };
-            }
-        },
-
-        /**
-         * Extract user claims from a JWT without verification.
-         * Useful for client-side display — NOT for authorization decisions.
-         */
-        decodeToken: (token: string): Record<string, unknown> | null => {
-            try {
-                const [, payloadB64] = token.split(".");
-                const payload = JSON.parse(atob(payloadB64));
-                return payload;
-            } catch {
-                return null;
-            }
-        },
-    };
+export const createEdgeClient = (config: CustomyEdgeConfig): {
+    verifySession: (token: string) => Promise<VerifyResult>;
+    decodeToken: (token: string) => Record<string, unknown> | null;
+} => {
+    warnDeprecated("@customyai/customy-access/edge", "use createEdgeClient from @customyai/web.");
+    return webEdgeClient({ publishableKey: config.publishableKey, authUrl: config.authUrl || "http://localhost:4001" });
 };
 
 // Re-export config type

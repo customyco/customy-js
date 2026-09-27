@@ -1,0 +1,62 @@
+{
+  "name": "@customyai/core",
+  "version": "0.1.0",
+  "description": "Customy SDK core: fetch transport, typed errors, retries with Retry-After, idempotency, pagination, platform discovery and machine tokens. Runs on Node, edge runtimes and browsers.",
+  "license": "MIT",
+  "author": "Customy <hello@customy.ai>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/customyco/customy-js.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/customyco/customy-js/issues"
+  },
+  "keywords": [
+    "customy",
+    "sdk",
+    "http",
+    "retry",
+    "idempotency"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.11",
+    "tsup": "^8.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

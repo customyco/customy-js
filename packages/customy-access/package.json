@@ -1,7 +1,7 @@
 {
   "name": "@customyai/customy-access",
-  "version": "0.7.0",
-  "description": "Customy Access — Official SDK for Identity & Access Management",
+  "version": "0.8.1",
+  "description": "Deprecated: use @customyai/client, @customyai/web, @customyai/server and @customyai/access. Adapter of the Customy Access SDK kept for one major cycle (the admin client CustomyAccess stays here, frozen).",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
   "homepage": "https://docs.customy.ai/sdk",
@@ -48,6 +48,26 @@
       "require": {
         "types": "./dist/react.d.cts",
         "default": "./dist/react.cjs"
+      }
+    },
+    "./native": {
+      "import": {
+        "types": "./dist/native.d.ts",
+        "default": "./dist/native.mjs"
+      },
+      "require": {
+        "types": "./dist/native.d.cts",
+        "default": "./dist/native.cjs"
+      }
+    },
+    "./native/react": {
+      "import": {
+        "types": "./dist/native-react.d.ts",
+        "default": "./dist/native-react.mjs"
+      },
+      "require": {
+        "types": "./dist/native-react.d.cts",
+        "default": "./dist/native-react.cjs"
       }
     },
     "./edge": {
@@ -134,6 +154,12 @@
       ],
       "flags": [
         "./dist/flags.d.ts"
+      ],
+      "native": [
+        "./dist/native.d.ts"
+      ],
+      "native/react": [
+        "./dist/native-react.d.ts"
       ]
     }
   },
@@ -152,8 +178,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "jose": "^5.2.2",
-    "@customyai/flags-eval": "^0.1.0"
+    "@customyai/access": "^0.1.0",
+    "@customyai/client": "^0.1.1",
+    "@customyai/core": "^0.1.0",
+    "@customyai/server": "^0.1.0",
+    "@customyai/web": "^0.1.1",
+    "jose": "^5.2.2"
   },
   "peerDependencies": {
     "next": ">=13",
