@@ -1,5 +1,13 @@
 # @customyai/core
 
+## 0.2.0
+
+### Minor Changes
+
+- - `CallOptions` (`signal`, `timeoutMs`) y `callOptions()`: las opciones por llamada que aceptan los SDK de producto; el plazo por llamada manda sobre el del cliente.
+  - `allowPrivateHttp` (transporte y `connectProduct`) permite `http://` solo hacia hosts privados (`isPrivateHost`: loopback, RFC 1918, IPv6 local, `*.internal`, nombres de una etiqueta), nunca a uno público. Lo recomendado sigue siendo el nombre público https.
+  - Una respuesta 2xx que no es JSON es ahora `SDK_RESPONSE_INVALID` (antes llegaba el texto como si fueran datos); para leer texto, `responseType: "text"`.
+
 ## 0.1.0
 
 ### Minor Changes

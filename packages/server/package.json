@@ -1,6 +1,6 @@
 {
   "name": "@customyai/server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Customy identity verification for any server: JWKS with rotation, machine and user token verifiers, BFF actor assertions and request verification over the standard Request, with a Node IncomingMessage adapter. Server only.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -65,7 +65,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/core": "^0.1.0",
+    "@customyai/core": "^0.2.0",
     "jose": "^5.2.2"
   },
   "devDependencies": {

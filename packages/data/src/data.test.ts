@@ -102,3 +102,55 @@ describe("@customyai/data", () => {
         expect(JSON.parse(calls[2]!.body!).batch[0].messageId).toBe(failed[0]![0]);
     });
 });
+
+describe("fuente y alcance de colección", () => {
+    const scope = { sourceId: "src_fixture", organizationId: "org_fixture", projectId: "prj_fixture", environmentId: "env_fixture", applicationId: "app_fixture" };
+
+    it("context.library lleva @customyai/data y la versión del paquete", async () => {
+        const { version } = await import("../package.json");
+        const { fetch, calls } = scripted([accepted()]);
+        const data = createData({ baseUrl: BASE, writeKey: WRITE_KEY, fetch, idFactory: ids });
+        await data.send({ type: "track", event: "x", userId: "u1" });
+        expect(JSON.parse(calls[0]!.body!).context.library).toEqual({ name: "@customyai/data", version });
+    });
+
+    it("con write key, collectionScope viaja en x-customy-collection-* y verifySource lee la fuente", async () => {
+        const descriptor = { contractVersion: 1, source: scope, governance: { version: 1 } };
+        const { fetch, calls } = scripted([json(200, descriptor), accepted()]);
+        const data = createData({ baseUrl: BASE, writeKey: WRITE_KEY, collectionScope: scope, fetch, idFactory: ids });
+        await expect(data.verifySource()).resolves.toEqual(descriptor);
+        await data.send({ type: "track", event: "x", userId: "u1" });
+        expect(calls[0]!.url).toBe(`${BASE}/v1/collect/source`);
+        for (const call of calls) {
+            expect(call.headers["x-customy-collection-source"]).toBe("src_fixture");
+            expect(call.headers["x-customy-collection-application"]).toBe("app_fixture");
+            expect(call.headers["x-write-key"]).toBe(WRITE_KEY);
+        }
+    });
+
+    it("un desajuste de la fuente llega como CustomyDataError con el código de Data", async () => {
+        const { fetch } = scripted([json(403, { error: "Collection source does not match the application binding", code: "DATA_COLLECTION_SCOPE_MISMATCH" })]);
+        const data = createData({ baseUrl: BASE, writeKey: WRITE_KEY, collectionScope: scope, fetch });
+        await expect(data.verifySource()).rejects.toMatchObject({ code: "DATA_COLLECTION_SCOPE_MISMATCH", status: 403, service: "data" });
+    });
+
+    it("con token, las cabeceras de alcance y tenant se ignoran con aviso (no falla)", async () => {
+        const warnings: string[] = [];
+        const { fetch, calls } = scripted([accepted()]);
+        const data = createData({
+            baseUrl: BASE, accessToken: "tok", fetch, idFactory: ids, collectionScope: scope, onWarning: (message) => warnings.push(message),
+            headers: { "x-org-id": "org_x", "x-customy-collection-source": "src_x", "x-trace": "keep" },
+        });
+        await data.send({ type: "track", event: "x", userId: "u1" });
+        const headers = calls[0]!.headers;
+        expect(Object.keys(headers).filter((name) => name.startsWith("x-customy-collection") || name === "x-org-id")).toEqual([]);
+        expect(headers["x-trace"]).toBe("keep");
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain("x-org-id");
+        expect(warnings[0]).toContain("collectionScope");
+    });
+
+    it("un collectionScope mal formado es un error al construir", () => {
+        expect(() => createData({ baseUrl: BASE, writeKey: WRITE_KEY, collectionScope: { ...scope, sourceId: "bad id" } })).toThrow(expect.objectContaining({ code: "SDK_COLLECTION_SCOPE_INVALID" }));
+    });
+});

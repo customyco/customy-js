@@ -6,7 +6,9 @@ Base común de los SDK de Customy. Sin dependencias y sin APIs propias de un run
 npm install @customyai/core
 ```
 
-- **Transporte** `createTransport({ baseUrl, accessToken })` sobre el `fetch` estándar: URL segura (https; `http` solo a loopback con `allowLoopbackHttp`), límite de tiempo por intento, límite de tamaño de la respuesta.
+- **Transporte** `createTransport({ baseUrl, accessToken })` sobre el `fetch` estándar: URL segura (https; `http` solo a loopback con `allowLoopbackHttp`, o a un host privado —RFC 1918, `*.internal`, nombre de una etiqueta— con `allowPrivateHttp`, nunca a uno público; lo recomendado es el nombre público https), límite de tiempo por intento, límite de tamaño de la respuesta.
+- **Respuestas**: un 2xx se lee como JSON; un cuerpo que no lo es es `SDK_RESPONSE_INVALID` (nunca texto colado como datos). Para texto, `responseType: "text"`.
+- **Por llamada**: `signal` y `timeoutMs` (`CallOptions`, `callOptions()`); el plazo por llamada manda sobre el del cliente. `@customyai/access` los acepta en todos sus métodos; `send` (envíos y creaciones) y `billing` (`usage.report`), en sus operaciones de escritura.
 - **Errores**: todo fallo es un `CustomySdkError { code, status, service, requestId, retryAfterMs, body }`; `code` es estable y sale del sobre de error de Customy (`{ error: { code, message, requestId } }`) o es un `SDK_*`.
 - **Reintentos** ante errores de red, `408`, `425`, `429` y `5xx` transitorios, con backoff exponencial y jitter, respetando `Retry-After` (segundos o fecha). Un `Retry-After` mayor que `maxRetryAfterMs` no se espera: el error sale con `retryAfterMs`.
 - **Idempotencia**: `GET`/`PUT`/`DELETE` se reintentan; un `POST`/`PATCH` solo si lleva `idempotencyKey` (propia o `true` para generarla, o `autoIdempotencyKey` en el transporte). La misma clave viaja en todos los intentos.

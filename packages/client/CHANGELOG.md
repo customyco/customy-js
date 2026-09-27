@@ -1,5 +1,18 @@
 # @customyai/client
 
+## 0.2.0
+
+### Minor Changes
+
+- - Los fallos de login (`signInWithEmail`, `signUp`, `signInWithMagicLink`, `verifyMFA`, passkeys…) llevan, además del texto de siempre en `error`, `status`, `code` y `retryable`: 401/403 credenciales o cuenta; 429/5xx servicio caído; `SDK_TIMEOUT` (408) y `SDK_NETWORK_ERROR` (0). Se lee el sobre `{ error: { code, message } }` y el formato plano (`authFailureFromResponse`).
+  - El slug de la organización viaja en `x-organization-slug` y, durante la transición, también en `x-organization-id`.
+  - `signInWithMagicLink` usa `/api/auth/sign-in/magic-link`, la ruta de Access (antes `magic-link/send`, que no existía allí).
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes

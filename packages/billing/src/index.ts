@@ -65,7 +65,7 @@ export type CustomyBilling<Meter extends string = string> = {
     readonly baseUrl: string;
     readonly usage: {
         /** Reporta de 1 a 100 eventos. Se reintenta sin duplicar: cada evento lleva su clave. */
-        report(events: ReadonlyArray<UsageEvent<Meter>>, request?: { signal?: AbortSignal }): Promise<UsageReport<Meter>>;
+        report(events: ReadonlyArray<UsageEvent<Meter>>, request?: { signal?: AbortSignal; timeoutMs?: number }): Promise<UsageReport<Meter>>;
     };
 };
 
@@ -96,6 +96,7 @@ export function createBilling<Meter extends string = string>(options: BillingOpt
                         body: { events: wire },
                         idempotencyKey: `usage-${await digest([...keys].sort().join("\n"))}`,
                         signal: request.signal,
+                        timeoutMs: request.timeoutMs,
                     });
                     return response.data;
                 } catch (error) {

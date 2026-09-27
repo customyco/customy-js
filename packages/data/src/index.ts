@@ -22,6 +22,8 @@ export {
     DATA_COLLECT_SCOPE,
     DATA_DEFAULT_BASE_URL,
     type BatchOutcome,
+    type CollectionScope,
+    type CollectionSourceDescriptor,
     type CustomerDataEvent,
     type CustomerDataEventType,
     type CustomyData,

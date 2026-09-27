@@ -75,10 +75,20 @@ function subtle(): SubtleCrypto {
     return api;
 }
 
-async function hmacKey(secret: string): Promise<CryptoKey> {
+/**
+ * Comprueba el secreto de la assertion (≥ 32 bytes) y lanza
+ * `SDK_ASSERTION_SECRET_INVALID` si no vale. Llamarlo al arrancar convierte
+ * un secreto ausente o corto en un error de configuración, no en un 401 por
+ * petición.
+ */
+export function assertActorAssertionSecret(secret: unknown): asserts secret is string {
     if (typeof secret !== "string" || encoder.encode(secret).byteLength < MIN_SECRET_BYTES) {
         throw new CustomySdkError({ code: "SDK_ASSERTION_SECRET_INVALID", message: `assertion secret must be at least ${MIN_SECRET_BYTES} bytes` });
     }
+}
+
+async function hmacKey(secret: string): Promise<CryptoKey> {
+    assertActorAssertionSecret(secret);
     return subtle().importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
@@ -110,10 +120,19 @@ export async function signActorAssertion(actor: ActorAssertion, options: ActorAs
     return `${encoded}.${toBase64Url(mac)}`;
 }
 
-/** Verifica una assertion (lado API). `null` si no es válida para esta petición. */
+/**
+ * Verifica una assertion (lado API). `null` si no es válida para esta
+ * petición. Lanza `SDK_ASSERTION_SECRET_INVALID` si el secreto no vale (es
+ * configuración, no la petición): valídalo al arrancar con
+ * `assertActorAssertionSecret` o usa `createActorAssertionVerifier`.
+ */
 export async function verifyActorAssertion(assertion: string | null | undefined, options: ActorAssertionOptions): Promise<ActorAssertion | null> {
-    if (typeof assertion !== "string" || assertion.length > MAX_ASSERTION_LENGTH) return null;
     const key = await hmacKey(options.secret);
+    return verifyWithKey(assertion, key, options);
+}
+
+async function verifyWithKey(assertion: string | null | undefined, key: CryptoKey, options: Omit<ActorAssertionOptions, "secret">): Promise<ActorAssertion | null> {
+    if (typeof assertion !== "string" || assertion.length > MAX_ASSERTION_LENGTH) return null;
     const parts = assertion.split(".");
     if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
     const mac = fromBase64Url(parts[1]);
@@ -141,5 +160,33 @@ export async function verifyActorAssertion(assertion: string | null | undefined,
         subject: payload.sub,
         ...(payload.org ? { organizationId: payload.org } : {}),
         environmentId: payload.env,
+    };
+}
+
+/** Verificador de assertions con el secreto ya comprobado e importado una vez. */
+export type ActorAssertionVerifier = (
+    assertion: string | null | undefined,
+    request: Readonly<{ method: string; path: string }>,
+) => Promise<ActorAssertion | null>;
+
+/**
+ * Verificador de assertions para una audiencia. Comprueba el secreto al
+ * construir (lanza `SDK_ASSERTION_SECRET_INVALID` al arrancar) y al verificar
+ * nunca lanza: devuelve el actor o `null`.
+ */
+export function createActorAssertionVerifier(options: Readonly<{ secret: string; audience: string; now?: () => number }>): ActorAssertionVerifier {
+    assertActorAssertionSecret(options.secret);
+    if (typeof options.audience !== "string" || options.audience.length === 0) {
+        throw new CustomySdkError({ code: "SDK_ASSERTION_INVALID", message: "assertion audience is required" });
+    }
+    let key: Promise<CryptoKey> | null = null;
+    return async (assertion, request) => {
+        try {
+            key ??= hmacKey(options.secret);
+            return await verifyWithKey(assertion, await key, { audience: options.audience, method: request.method, path: request.path, now: options.now });
+        } catch {
+            key = null;
+            return null;
+        }
     };
 }

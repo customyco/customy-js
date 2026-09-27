@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { actionCategoryId, CustomySend, CustomySendError, verifyWebhook } from "./index";
+import { actionCategoryId, CustomySend, CustomySendError, SEND_API_VERSION, verifyWebhook } from "./index";
 
 function fakeFetch(handler: (url: string, init: RequestInit) => Response | Promise<Response>): typeof fetch {
   return (async (url: string | URL | Request, init?: RequestInit) => handler(String(url), init ?? {})) as typeof fetch;
@@ -170,6 +170,61 @@ describe("CustomySend · Engage", () => {
     expect(seen[0]!.body).toEqual(rich);
     expect(seen[2]!.body).toEqual({ recall: true });
     expect(seen[9]!.body).toEqual({ timezone: "America/Bogota", quiet_hours: null });
+  });
+
+  it("in-app v2: aprobación, prueba, estadísticas, plantillas, kits de marca, tarjetas, vista previa y Customy-Version", async () => {
+    const { seen, send } = recorder(() => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await send.inApp.submit("iam_1", { actor: "usr_ana" });
+    await send.inApp.approve("iam_1", { actor: "usr_bea" });
+    await send.inApp.reject("iam_1", "copy");
+    await send.inApp.activate("iam_1");
+    await send.inApp.pause("iam_1");
+    await send.inApp.test("iam_1", { subscriber: "user_1" });
+    await send.inApp.stats("iam_1");
+    await send.inApp.approvals("iam_1");
+    await send.inApp.templates.list();
+    await send.inApp.templates.create({ name: "Mía", layout: "tooltip", content: { anchor: "profile.notifications", title: "Aquí" } });
+    await send.inApp.templates.remove("tpl_1");
+    await send.brandKits.create({ name: "Bonu", colors: { background: "#fff", text: "#111", accent: "#0a5", muted: "#888" } });
+    await send.brandKits.update("bk_1", { default: true });
+    await send.contentCards.create({ name: "Promo", title: "2x1" });
+    await send.contentCards.list({ status: "active" });
+    await send.contentCards.approve("cc_1", { actor: "usr_bea" });
+    await send.contentCards.test("cc_1", { subscriber: "user_1", variant_id: "a" });
+    await send.contentCards.stats("cc_1");
+    await send.contentCards.approvals("cc_1");
+    await send.contentCards.remove("cc_1");
+    await send.templates.preview({ content: { title: "Hola {{ first_name }}" }, attributes: { first_name: "Ana" } });
+    expect(seen.map((s) => `${s.method} ${s.path}`)).toEqual([
+      "POST /api/in-app/messages/iam_1/submit",
+      "POST /api/in-app/messages/iam_1/approve",
+      "POST /api/in-app/messages/iam_1/reject",
+      "POST /api/in-app/messages/iam_1/activate",
+      "POST /api/in-app/messages/iam_1/pause",
+      "POST /api/in-app/messages/iam_1/test",
+      "GET /api/in-app/messages/iam_1/stats",
+      "GET /api/in-app/messages/iam_1/approvals",
+      "GET /api/in-app/templates",
+      "POST /api/in-app/templates",
+      "DELETE /api/in-app/templates/tpl_1",
+      "POST /api/brand-kits",
+      "PATCH /api/brand-kits/bk_1",
+      "POST /api/content-cards",
+      "GET /api/content-cards?status=active",
+      "POST /api/content-cards/cc_1/approve",
+      "POST /api/content-cards/cc_1/test",
+      "GET /api/content-cards/cc_1/stats",
+      "GET /api/content-cards/cc_1/approvals",
+      "DELETE /api/content-cards/cc_1",
+      "POST /api/templates/preview",
+    ]);
+    expect(seen[0]!.headers["x-customy-actor"]).toBe("usr_ana");
+    expect(seen[1]!.headers["x-customy-actor"]).toBe("usr_bea");
+    expect(seen[2]!.body).toEqual({ reason: "copy" });
+    expect(seen.every((s) => s.headers["customy-version"] === "2026-09-27")).toBe(true);
+    expect(SEND_API_VERSION).toBe("2026-09-27");
+    const failing = new CustomySend("cs_test_abc", { baseUrl: "https://send.test", fetch: fakeFetch(() => new Response(JSON.stringify({ statusCode: 403, name: "approval_same_actor", message: "otra persona" }), { status: 403 })) });
+    await expect(failing.inApp.approve("iam_1")).rejects.toMatchObject({ name: "CustomySendError", status: 403, code: "approval_same_actor" });
   });
 
   it("actionCategoryId: la misma categoría de iOS que manda Send (FNV-1a de ids y opciones)", () => {

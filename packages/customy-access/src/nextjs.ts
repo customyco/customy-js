@@ -378,6 +378,63 @@ export function customyMiddleware(options?: CustomyMiddlewareOptions) {
 
 // ─── 3. Server-Side Session Fetcher (Next.js SSR) ───
 
+type RenewalCookie = {
+    name: string;
+    value: string;
+    path?: string;
+    maxAge?: number;
+    expires?: Date;
+    httpOnly?: boolean;
+    secure?: boolean;
+    sameSite?: "lax" | "strict" | "none";
+};
+
+/** Una `Set-Cookie` como la opción de `cookies().set()` de Next.js; `null` si no se entiende. */
+function parseRenewalCookie(header: string): RenewalCookie | null {
+    const [pair, ...attributes] = header.split(";");
+    const separator = pair?.indexOf("=") ?? -1;
+    if (!pair || separator <= 0) return null;
+    const cookie: RenewalCookie = { name: pair.slice(0, separator).trim(), value: pair.slice(separator + 1).trim() };
+    if (!cookie.name) return null;
+    for (const attribute of attributes) {
+        const [rawKey, ...rest] = attribute.split("=");
+        const key = rawKey?.trim().toLowerCase();
+        const value = rest.join("=").trim();
+        if (key === "path") cookie.path = value || "/";
+        else if (key === "max-age" && /^-?\d+$/.test(value)) cookie.maxAge = Number(value);
+        else if (key === "expires") {
+            const date = new Date(value);
+            if (!Number.isNaN(date.getTime())) cookie.expires = date;
+        } else if (key === "httponly") cookie.httpOnly = true;
+        else if (key === "secure") cookie.secure = true;
+        else if (key === "samesite") {
+            const sameSite = value.toLowerCase();
+            if (sameSite === "lax" || sameSite === "strict" || sameSite === "none") cookie.sameSite = sameSite;
+        }
+        // `Domain` nunca: `@customyai/web` ya las dejó como cookies de host.
+    }
+    return cookie;
+}
+
+/**
+ * Aplica la renovación que devolvió Access, como hacía 0.x sin que la app
+ * hiciera nada. Solo se puede donde Next.js deja escribir cookies (Route
+ * Handlers y Server Actions); en un Server Component `set` lanza y la
+ * renovación queda para el middleware, que la devuelve en su respuesta.
+ */
+function applyRenewalCookies(store: { set?: (...args: any[]) => unknown }, setCookies: readonly string[]): void {
+    if (setCookies.length === 0 || typeof store.set !== "function") return;
+    for (const header of setCookies) {
+        const cookie = parseRenewalCookie(header);
+        if (!cookie) continue;
+        try {
+            store.set(cookie);
+        } catch {
+            return;
+        }
+    }
+}
+
 /**
  * Sesión del usuario en un Server Component, validada en Access, o `null`.
  * @example
@@ -401,6 +458,7 @@ export async function getServerSession(options?: CustomyAuthOptions): Promise<{
             requireExactEnvironment: options?.requireExactEnvironment,
         });
         if (!session) return null;
+        applyRenewalCookies(cookieStore, session.setCookies);
         return { user: session.user, session: session.session, actor: session.actor, isImpersonated: session.isImpersonated };
     } catch (error) {
         console.error("[Customy SSR] Error fetching server session:", error);

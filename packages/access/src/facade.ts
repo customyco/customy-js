@@ -2,9 +2,9 @@
  * Fachada de Customy Access para el servidor de una app: capabilities de sus
  * usuarios, catálogo comercial, usuarios y el contacto acotado de uno.
  */
-import { connectProduct, paginate, type Query } from "@customyai/core";
-import { accessCall, CustomyAccessError } from "./errors";
-import { ACCESS_AUDIENCE, ACCESS_DEFAULT_BASE_URL, type AccessOptions } from "./options";
+import { callOptions, connectProduct, paginate, type CallOptions, type Query, type Transport } from "@customyai/core";
+import { accessCall, CustomyAccessError, withRequiredScope } from "./errors";
+import { ACCESS_AUDIENCE, ACCESS_DEFAULT_BASE_URL, type AccessOptions, type AccessScope } from "./options";
 import type {
     AccessCatalog,
     AccessMeSnapshot,
@@ -52,41 +52,64 @@ export type CustomyAccess<Capability extends string = string> = ReturnType<typeo
 /**
  * ```ts
  * import type { CustomyCapability } from "./customy.generated"; // customy apps codegen
- * const access = createAccess<CustomyCapability>({ platform, machineTokens, scopes: ["capabilities:read"] });
+ * const access = createAccess<CustomyCapability>({ platform, machineTokens });
  * const { allowed } = await access.capabilities.check("reports.export", { userId });
  * ```
+ *
+ * Con `machineTokens` y sin `scopes`, cada método pide su token con el scope
+ * que necesita, la primera vez que se usa (`me`/`capabilities` →
+ * `capabilities:read`, `users.contact` → `users:contact:read`, `users.*` →
+ * `users:read`, `catalog.*` → `catalog:read`). Con `scopes`, un solo token con
+ * esos scopes para todo. Todos los métodos aceptan `signal` y `timeoutMs`.
  */
 export function createAccess<Capability extends string = string>(options: AccessOptions): CustomyAccess<Capability> {
     return buildAccess<Capability>(options);
 }
 
+const DESCRIPTOR = { key: "access", audience: ACCESS_AUDIENCE, defaultBaseUrl: ACCESS_DEFAULT_BASE_URL, defaultScopes: ["capabilities:read"] } as const;
+
 function buildAccess<Capability extends string>(options: AccessOptions) {
-    const { transport, baseUrl } = connectProduct(options, {
-        key: "access", audience: ACCESS_AUDIENCE, defaultBaseUrl: ACCESS_DEFAULT_BASE_URL, defaultScopes: ["capabilities:read"],
-    });
+    const { transport: baseTransport, baseUrl } = connectProduct(options, DESCRIPTOR);
+    // Scopes perezosos: solo con tokens de máquina y sin scopes explícitos. Un token por scope, cacheado por `machineTokens`.
+    const lazyScopes = options.machineTokens !== undefined && options.scopes === undefined;
+    const transports = new Map<AccessScope, Transport>();
+    const transportFor = (scope: AccessScope): Transport => {
+        if (!lazyScopes || scope === "capabilities:read") return baseTransport;
+        let transport = transports.get(scope);
+        if (!transport) {
+            transport = connectProduct({ ...options, scopes: [scope] }, DESCRIPTOR).transport;
+            transports.set(scope, transport);
+        }
+        return transport;
+    };
     // La ruta se resuelve dentro de la llamada: un entorno que falta es un rechazo, no una excepción síncrona.
-    const get = <T>(path: string | (() => string), query?: Query | (() => Query)) => accessCall(async () => {
-        const resolvedPath = typeof path === "function" ? path() : path;
-        return (await transport.request<T>("GET", resolvedPath, { query: typeof query === "function" ? query() : query })).data;
-    });
+    const get = <T>(method: string, scope: AccessScope, path: string | (() => string), query: Query | (() => Query) | undefined, call: CallOptions | undefined) =>
+        accessCall(async () => {
+            const resolvedPath = typeof path === "function" ? path() : path;
+            const request = { query: typeof query === "function" ? query() : query, ...callOptions(call) };
+            return (await transportFor(scope).request<T>("GET", resolvedPath, request)).data;
+        }).catch((error: unknown) => { throw withRequiredScope(error, method, scope); });
     const environment = (explicit: string | undefined): string => {
         const value = explicit ?? options.environmentId;
         if (!value) throw new CustomyAccessError({ code: "SDK_ENVIRONMENT_REQUIRED", message: "Pass environmentId (in the options or the call)" });
         return value;
     };
     const admin = (environmentId: string | undefined, path: string) => () => `/api/admin/env/${enc(environment(environmentId))}${path}`;
-    type Scope = { environmentId?: string };
+    type Scope = CallOptions & { environmentId?: string };
     type UserScope = Scope & { userId?: string };
 
     function me(params: UserScope = {}): Promise<AccessMeSnapshot> {
         // Con un token de máquina el entorno sale del token: no hace falta pasarlo.
-        return get<AccessMeSnapshot>("/api/v1/me", { envId: params.environmentId ?? options.environmentId, userId: params.userId });
+        return get<AccessMeSnapshot>("me", "capabilities:read", "/api/v1/me", { envId: params.environmentId ?? options.environmentId, userId: params.userId }, params);
     }
 
     const listUsers = (params: Scope & { search?: string; page?: number; limit?: number; sort?: string; order?: "asc" | "desc" } = {}) => {
-        const { environmentId, ...query } = params;
-        return get<{ users: UserSummary[]; total: number }>(admin(environmentId, "/users"), query);
+        const { environmentId, signal, timeoutMs, ...query } = params;
+        return get<{ users: UserSummary[]; total: number }>("users.list", "users:read", admin(environmentId, "/users"), query, { signal, timeoutMs });
     };
+
+    const catalogItems = <T>(name: string, path: string) => (params: Scope = {}) =>
+        get<{ items: T[] }>(`catalog.${name}`, "catalog:read", admin(params.environmentId, path), undefined, params).then((r) => r.items);
 
     return {
         baseUrl,
@@ -108,34 +131,35 @@ function buildAccess<Capability extends string>(options: AccessOptions) {
 
         /** Catálogo comercial del propio entorno (scope `catalog:read`; `admin:*` además ve el maestro global). */
         catalog: {
-            get: (params: Scope = {}) => get<AccessCatalog>(admin(params.environmentId, "/catalog")),
-            features: (params: Scope = {}) => get<{ items: CatalogFeature[] }>(admin(params.environmentId, "/catalog/features")).then((r) => r.items),
-            plans: (params: Scope = {}) => get<{ items: CatalogPlan[] }>(admin(params.environmentId, "/catalog/plans")).then((r) => r.items),
-            addOns: (params: Scope = {}) => get<{ items: CatalogAddOn[] }>(admin(params.environmentId, "/catalog/addons")).then((r) => r.items),
-            prices: (params: Scope = {}) => get<{ items: CatalogPrice[] }>(admin(params.environmentId, "/catalog/prices")).then((r) => r.items),
-            meters: (params: Scope = {}) => get<{ items: CatalogMeter[] }>(admin(params.environmentId, "/catalog/meters")).then((r) => r.items),
+            get: (params: Scope = {}) => get<AccessCatalog>("catalog.get", "catalog:read", admin(params.environmentId, "/catalog"), undefined, params),
+            features: catalogItems<CatalogFeature>("features", "/catalog/features"),
+            plans: catalogItems<CatalogPlan>("plans", "/catalog/plans"),
+            addOns: catalogItems<CatalogAddOn>("addOns", "/catalog/addons"),
+            prices: catalogItems<CatalogPrice>("prices", "/catalog/prices"),
+            meters: catalogItems<CatalogMeter>("meters", "/catalog/meters"),
         },
 
         users: {
             /** Una página de usuarios del entorno (scope `users:read`). */
             list: listUsers,
-            /** Todos los usuarios, página a página. */
-            iterate: (params: Scope & { search?: string; limit?: number } = {}, iteration: { signal?: AbortSignal; maxPages?: number } = {}) => {
+            /** Todos los usuarios, página a página (`signal`/`timeoutMs` de `iteration` valen para cada página). */
+            iterate: (params: Omit<Scope, "signal" | "timeoutMs"> & { search?: string; limit?: number } = {}, iteration: { signal?: AbortSignal; maxPages?: number; timeoutMs?: number } = {}) => {
                 const limit = Math.min(100, Math.max(1, Math.trunc(params.limit ?? 100)));
                 return paginate<UserSummary>(async (cursor) => {
                     const page = cursor ? Number(cursor) : 1;
-                    const result = await listUsers({ ...params, page, limit });
+                    const result = await listUsers({ ...params, page, limit, signal: iteration.signal, timeoutMs: iteration.timeoutMs });
                     const more = result.users.length > 0 && page * limit < result.total;
                     return { items: result.users, nextCursor: more ? String(page + 1) : null };
-                }, iteration);
+                }, { signal: iteration.signal, maxPages: iteration.maxPages });
             },
-            get: (userId: string, params: Scope = {}) => get<UserSummary>(admin(params.environmentId, `/users/${enc(userId)}`)),
+            get: (userId: string, params: Scope = {}) => get<UserSummary>("users.get", "users:read", admin(params.environmentId, `/users/${enc(userId)}`), undefined, params),
             /**
              * El contacto de UN usuario del entorno, leído al enviarle para no
              * guardarlo (scope exacto `users:contact:read`; cada lectura se audita).
              * Un no miembro y un id inexistente dan el mismo `USER_NOT_FOUND`.
              */
-            contact: (userId: string, params: Scope = {}) => get<UserContact>(`/api/v1/users/${enc(userId)}/contact`, () => ({ envId: environment(params.environmentId) })),
+            contact: (userId: string, params: Scope = {}) =>
+                get<UserContact>("users.contact", "users:contact:read", `/api/v1/users/${enc(userId)}/contact`, () => ({ envId: environment(params.environmentId) }), params),
         },
     };
 }

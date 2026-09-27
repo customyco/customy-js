@@ -7,17 +7,52 @@
  */
 import {
     CustomySdkError,
+    callOptions,
     connectProduct,
     createIdempotencyKey,
+    type CallOptions,
     type CustomySdkErrorOptions,
     type ProductClientOptions,
 } from "@customyai/core";
+import { version as LIBRARY_VERSION } from "../package.json";
 
 export const DATA_DEFAULT_BASE_URL = "https://data.customy.ai";
 export const DATA_AUDIENCE = "customy-data";
 /** El único scope que necesita una app para enviar eventos. */
 export const DATA_COLLECT_SCOPE = "data:collect";
 const LIBRARY = "@customyai/data";
+
+/**
+ * Aserción del alcance de una fuente externa con write key: Data la compara
+ * con el alcance real de la fuente y rechaza (`DATA_COLLECTION_SCOPE_MISMATCH`)
+ * si no coincide; nunca concede alcance. Una fuente dedicada a una app
+ * externa la exige. Con un token de Access el alcance va firmado y se ignora.
+ */
+export type CollectionScope = Readonly<{
+    sourceId: string;
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    applicationId: string;
+}>;
+
+const COLLECTION_SCOPE_HEADERS: Readonly<Record<keyof CollectionScope, string>> = {
+    sourceId: "x-customy-collection-source",
+    organizationId: "x-customy-collection-organization",
+    projectId: "x-customy-collection-project",
+    environmentId: "x-customy-collection-environment",
+    applicationId: "x-customy-collection-application",
+};
+
+/** Cabeceras de tenant de otros servicios: en Data el alcance sale de la credencial. */
+const TENANT_HEADERS = new Set(["x-org-id", "x-organization-id", "x-organization-slug", "x-env-id", "x-environment-id", "x-project-id", "x-tenant-id"]);
+
+/** Respuesta de `verifySource()`: el alcance real de la fuente del write key. */
+export type CollectionSourceDescriptor = {
+    contractVersion: number;
+    source: CollectionScope;
+    governance?: Record<string, unknown>;
+} & Record<string, unknown>;
 
 /** Mapa evento → propiedades. `customy apps codegen` lo genera (`CustomyEventProperties`). */
 export type EventMap = Record<string, Record<string, unknown>>;
@@ -69,6 +104,14 @@ export type BatchOutcome = {
 export type DataOptions = ProductClientOptions & Readonly<{
     /** Write key de la fuente: para navegador y apps sin identidad de servidor. */
     writeKey?: string;
+    /**
+     * Alcance esperado de la fuente del write key (cabeceras
+     * `x-customy-collection-*`). Obligatorio para una fuente dedicada a una app
+     * externa; con un token de Access se ignora con aviso.
+     */
+    collectionScope?: CollectionScope;
+    /** Avisos no fatales (cabeceras ignoradas…). Por defecto `console.warn`. */
+    onWarning?: (message: string) => void;
     /** Eventos por lote en `flush` (1–1000, por defecto 100). */
     maxBatchSize?: number;
     /** Eventos en cola como máximo (por defecto 10 000). */
@@ -191,12 +234,44 @@ export function createData<Events extends EventMap = EventMap>(options: DataOpti
     return buildData<Events>(options);
 }
 
+/**
+ * Cabeceras que viajan a Data. Las de tenant de otros servicios se quitan
+ * (el alcance sale de la credencial), con aviso en vez de fallar. Las de
+ * alcance de colección solo acotan un write key; con un token se quitan.
+ */
+function collectionHeaders(options: DataOptions, warn: (message: string) => void): Record<string, string> {
+    const headers: Record<string, string> = {};
+    const ignored: string[] = [];
+    const scopeNames = new Set(Object.values(COLLECTION_SCOPE_HEADERS));
+    for (const [name, value] of Object.entries(options.headers ?? {})) {
+        const lower = name.toLowerCase();
+        if (TENANT_HEADERS.has(lower) || (scopeNames.has(lower) && options.writeKey === undefined)) ignored.push(lower);
+        else headers[name] = value;
+    }
+    if (options.collectionScope) {
+        if (options.writeKey === undefined) ignored.push("collectionScope");
+        else {
+            for (const [key, name] of Object.entries(COLLECTION_SCOPE_HEADERS) as Array<[keyof CollectionScope, string]>) {
+                const value = options.collectionScope[key];
+                if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,160}$/.test(value)) throw fail("SDK_COLLECTION_SCOPE_INVALID", `collectionScope.${key} is invalid`);
+                headers[name] = value;
+            }
+        }
+    }
+    if (ignored.length > 0) {
+        warn(`Customy Data takes the scope from the credential; ignoring ${[...new Set(ignored)].join(", ")}.`);
+    }
+    return headers;
+}
+
 function buildData<Events extends EventMap>(options: DataOptions) {
     const hasToken = options.accessToken !== undefined || options.machineTokens !== undefined;
     if (options.writeKey !== undefined && hasToken) throw fail("SDK_CREDENTIALS_AMBIGUOUS", "Pass either writeKey or an Access credential, not both");
     if (options.writeKey !== undefined && !/^\S{8,512}$/.test(options.writeKey)) throw fail("SDK_CREDENTIALS_REQUIRED", "writeKey is invalid");
+    const warn = options.onWarning ?? ((message: string) => (globalThis as { console?: { warn?: (message: string) => void } }).console?.warn?.(message));
+    const headers = collectionHeaders(options, warn);
     const { transport, baseUrl } = connectProduct(
-        options.writeKey ? { ...options, headers: { ...options.headers, "x-write-key": options.writeKey } } : options,
+        { ...options, headers: options.writeKey ? { ...headers, "x-write-key": options.writeKey } : headers },
         { key: "data", audience: DATA_AUDIENCE, defaultBaseUrl: DATA_DEFAULT_BASE_URL, defaultScopes: [DATA_COLLECT_SCOPE], credentialOptional: options.writeKey !== undefined },
     );
     const maxBatchSize = Math.min(1_000, Math.max(1, Math.trunc(options.maxBatchSize ?? 100)));
@@ -217,7 +292,7 @@ function buildData<Events extends EventMap>(options: DataOptions) {
             schemaVersion: input.schemaVersion ?? "1.0",
             properties: input.properties ?? {},
             traits: input.traits ?? {},
-            context: { ...input.context, library: { name: LIBRARY } },
+            context: { ...input.context, library: { name: LIBRARY, version: LIBRARY_VERSION } },
             consent: input.consent ?? {},
         };
         validate(event);
@@ -293,8 +368,22 @@ function buildData<Events extends EventMap>(options: DataOptions) {
 
     const identityOf = (identity: EventIdentity) => identity;
 
+    /**
+     * Comprueba la fuente antes de enviar (`GET /v1/collect/source`): su
+     * alcance real y la gobernanza del contrato. Con write key y
+     * `collectionScope`, Data además confirma que coinciden.
+     */
+    async function verifySource(call: CallOptions = {}): Promise<CollectionSourceDescriptor> {
+        try {
+            return (await transport.request<CollectionSourceDescriptor>("GET", "/v1/collect/source", callOptions(call))).data;
+        } catch (error) {
+            throw toDataError(error);
+        }
+    }
+
     return {
         baseUrl,
+        verifySource,
         /** Un evento declarado, con sus propiedades tipadas. */
         track<Name extends keyof Events & string>(event: Name, properties: Events[Name], identity: EventIdentity): Promise<EventOutcome> {
             return send({ type: "track", event, properties, ...identityOf(identity) });

@@ -176,3 +176,62 @@ describe("createTransport", () => {
         expect(calls).toHaveLength(0);
     });
 });
+
+describe("opciones por llamada", () => {
+    it("callOptions toma solo signal y timeoutMs, y el plazo por llamada manda sobre el del cliente", async () => {
+        const { callOptions } = await import("./transport");
+        const controller = new AbortController();
+        expect(callOptions(undefined)).toEqual({});
+        expect(callOptions({ timeoutMs: 5, ...({ environmentId: "x" } as object) })).toEqual({ timeoutMs: 5 });
+        expect(callOptions({ signal: controller.signal })).toEqual({ signal: controller.signal });
+        const fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))))) as typeof globalThis.fetch;
+        const client = createTransport({ baseUrl: "https://api.fixture.invalid", fetch, timeoutMs: 60_000, retry: false });
+        const started = Date.now();
+        await expect(client.get("/v1/slow", callOptions({ timeoutMs: 5 }))).rejects.toMatchObject({ code: "SDK_TIMEOUT", status: 408 });
+        expect(Date.now() - started).toBeLessThan(5_000);
+    });
+});
+
+describe("http hacia hosts privados", () => {
+    it("isPrivateHost: RFC 1918, loopback, ULA, *.internal y una etiqueta; nunca públicos ni link-local", async () => {
+        const { isPrivateHost } = await import("./url");
+        for (const host of ["10.0.0.23", "172.16.0.1", "172.31.255.255", "192.168.1.10", "127.0.0.1", "localhost", "[::1]", "[fd12:3456::1]", "customy-access", "api.internal"]) {
+            expect(isPrivateHost(host), host).toBe(true);
+        }
+        for (const host of ["8.8.8.8", "172.32.0.1", "169.254.169.254", "access.example.com", "metadata.google.internal", "[2001:db8::1]", "[fe80::1]", "10.0.0.256", ""]) {
+            expect(isPrivateHost(host), host).toBe(false);
+        }
+    });
+
+    it("allowPrivateHttp abre http solo a hosts privados; sin él, https o loopback", () => {
+        const make = (baseUrl: string, extra: object = {}) => () => createTransport({ baseUrl, fetch: (async () => new Response("{}")) as typeof fetch, ...extra });
+        expect(make("http://customy-access:4001", { allowPrivateHttp: true })).not.toThrow();
+        expect(make("http://10.0.0.5", { allowPrivateHttp: true })).not.toThrow();
+        expect(make("http://access.example.com", { allowPrivateHttp: true })).toThrow(expect.objectContaining({ code: "SDK_BASE_URL_INVALID" }));
+        expect(make("http://customy-access:4001")).toThrow(expect.objectContaining({ code: "SDK_BASE_URL_INVALID" }));
+        expect(make("http://customy-access:4001", { allowLoopbackHttp: true })).toThrow(expect.objectContaining({ code: "SDK_BASE_URL_INVALID" }));
+    });
+});
+
+describe("respuesta 2xx que no es JSON", () => {
+    const client = (response: () => Response) => createTransport({ baseUrl: "https://api.fixture.invalid", fetch: (async () => response()) as typeof fetch, retry: false });
+
+    it("es un error tipado SDK_RESPONSE_INVALID, sin reintento", async () => {
+        let calls = 0;
+        const transport = createTransport({ baseUrl: "https://api.fixture.invalid", fetch: (async () => { calls += 1; return new Response("<html>login</html>", { status: 200, headers: { "content-type": "text/html" } }); }) as typeof fetch });
+        await expect(transport.get("/v1/things")).rejects.toMatchObject({ code: "SDK_RESPONSE_INVALID", status: 200, body: "<html>login</html>" });
+        expect(calls).toBe(1);
+    });
+
+    it("vacío es null; JSON sin content-type se lee; responseType text devuelve el texto", async () => {
+        expect(await client(() => new Response("", { status: 200 })).get("/v1/x")).toBeNull();
+        expect(await client(() => new Response("{\"a\":1}", { status: 200 })).get("/v1/x")).toEqual({ a: 1 });
+        expect(await client(() => new Response("a,b\n1,2", { status: 200, headers: { "content-type": "text/csv" } })).get("/v1/x", { responseType: "text" })).toBe("a,b\n1,2");
+        expect(await client(() => new Response("{\"a\":1}", { status: 200 })).get("/v1/x", { responseType: "text" })).toBe("{\"a\":1}");
+    });
+
+    it("un error no JSON sigue siendo HTTP_<estado>", async () => {
+        await expect(client(() => new Response("Bad gateway", { status: 502 })).get("/v1/x")).rejects.toMatchObject({ code: "HTTP_502", status: 502 });
+    });
+});

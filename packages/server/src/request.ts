@@ -3,9 +3,13 @@
  * adaptador para el `IncomingMessage` de Node. Cada petición trae exactamente
  * una credencial: `Authorization: Bearer <token de Access>` o la assertion del
  * BFF (`x-customy-actor`). Con las dos, o ninguna, no hay principal.
+ *
+ * Resultado: el principal, `null` si la credencial no vale (→ 401), o una
+ * excepción `ACCESS_UNAVAILABLE` si Access no responde para decidir (→ 503).
  */
-import { ACTOR_ASSERTION_HEADER, verifyActorAssertion, type ActorAssertion } from "./assertion";
-import type { MachinePrincipal, TokenVerifier } from "./tokens";
+import { CustomySdkError } from "@customyai/core";
+import { assertActorAssertionSecret, ACTOR_ASSERTION_HEADER, verifyActorAssertion, type ActorAssertion } from "./assertion";
+import { isAccessUnavailable, type MachinePrincipal, type TokenVerifier } from "./tokens";
 
 const BEARER = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/;
 
@@ -35,7 +39,12 @@ function hasScopes(principal: unknown, required: readonly string[]): boolean {
     return Array.isArray(scopes) && required.every((scope) => scopes.includes(scope));
 }
 
-/** Resuelve el principal de una petición, o `null`. Nunca lanza por credenciales inválidas. */
+/**
+ * Resuelve el principal de una petición, o `null`. Nunca lanza por
+ * credenciales inválidas ni por un secreto de assertion mal configurado (eso
+ * se detecta al arrancar con `createRequestVerifier`). Solo relanza
+ * `ACCESS_UNAVAILABLE` del verificador del Bearer: la app responde 503.
+ */
 export async function verifyRequest<P>(request: Request, options: VerifyRequestOptions<P>): Promise<RequestPrincipal<P> | null> {
     const assertionHeader = (options.assertion?.header ?? ACTOR_ASSERTION_HEADER).toLowerCase();
     const authorization = request.headers.get("authorization");
@@ -47,7 +56,10 @@ export async function verifyRequest<P>(request: Request, options: VerifyRequestO
         const token = bearerToken(request);
         if (!token) return null;
         let principal: P | null;
-        try { principal = await options.bearer(token); } catch { return null; }
+        try { principal = await options.bearer(token); } catch (error) {
+            if (isAccessUnavailable(error)) throw error;
+            return null;
+        }
         if (!principal || !hasScopes(principal, options.requiredScopes ?? [])) return null;
         return { kind: "bearer", principal };
     }
@@ -55,16 +67,47 @@ export async function verifyRequest<P>(request: Request, options: VerifyRequestO
     if (assertion !== null && options.assertion) {
         let path: string;
         try { path = new URL(request.url).pathname; } catch { return null; }
-        const actor = await verifyActorAssertion(assertion, {
-            secret: options.assertion.secret,
-            audience: options.assertion.audience,
-            method: request.method,
-            path,
-            now: options.assertion.now,
-        });
+        let actor: ActorAssertion | null;
+        try {
+            actor = await verifyActorAssertion(assertion, {
+                secret: options.assertion.secret,
+                audience: options.assertion.audience,
+                method: request.method,
+                path,
+                now: options.assertion.now,
+            });
+        } catch {
+            return null;
+        }
         return actor ? { kind: "assertion", actor } : null;
     }
     return null;
+}
+
+/**
+ * `verifyRequest` con las opciones comprobadas al construir: un secreto de
+ * assertion ausente o corto lanza `SDK_ASSERTION_SECRET_INVALID` al arrancar,
+ * no un 401 en cada petición.
+ *
+ * ```ts
+ * const verify = createRequestVerifier({ bearer, assertion: { secret: process.env.ACTOR_SECRET!, audience: "acme-api" } });
+ * try {
+ *   const auth = await verify(request);
+ *   if (!auth) return new Response(null, { status: 401 });
+ * } catch (error) {
+ *   if (isAccessUnavailable(error)) return new Response(null, { status: 503 });
+ *   throw error;
+ * }
+ * ```
+ */
+export function createRequestVerifier<P>(options: VerifyRequestOptions<P>): (request: Request) => Promise<RequestPrincipal<P> | null> {
+    if (options.assertion) {
+        assertActorAssertionSecret(options.assertion.secret);
+        if (typeof options.assertion.audience !== "string" || options.assertion.audience.length === 0) {
+            throw new CustomySdkError({ code: "SDK_ASSERTION_INVALID", message: "assertion audience is required" });
+        }
+    }
+    return (request) => verifyRequest(request, options);
 }
 
 /** Verifica el Bearer de una Request como token de máquina y exige los scopes indicados. */
@@ -75,7 +118,10 @@ export async function verifyMachineRequest(
 ): Promise<MachinePrincipal | null> {
     const token = bearerToken(request);
     if (!token) return null;
-    const principal = await verify(token).catch(() => null);
+    const principal = await verify(token).catch((error: unknown) => {
+        if (isAccessUnavailable(error)) throw error;
+        return null;
+    });
     if (!principal) return null;
     return hasScopes(principal, requiredScopes) ? principal : null;
 }

@@ -1,5 +1,18 @@
 # @customyai/access
 
+## 0.2.0
+
+### Minor Changes
+
+- - Con `machineTokens` y sin `scopes`, cada método pide su propio scope la primera vez que se usa (`users.contact` → `users:contact:read`, `users.*` → `users:read`, `catalog.*` → `catalog:read`, `me`/`capabilities` → `capabilities:read`): `access.users.contact` ya no falla por pedir solo el mínimo. Con `scopes`, un único token con esos, como antes.
+  - Un fallo de scope (`SCOPE_REQUIRED`, token sin el scope) es `CustomyAccessError` con `requiredScope` y un mensaje que nombra el método y el scope.
+  - `signal` y `timeoutMs` por llamada en todos los métodos (`me`, `capabilities.*`, `catalog.*`, `users.*`); `users.iterate` los toma de su segundo argumento.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes

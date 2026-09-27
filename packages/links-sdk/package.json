@@ -1,6 +1,6 @@
 {
   "name": "@customyai/links-sdk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Deprecated: use @customyai/links. Adapter of the Customy Links client (short links, analytics, conversions, webhooks) kept for one major cycle.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -51,8 +51,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/core": "^0.1.0",
-    "@customyai/links": "^0.1.0"
+    "@customyai/core": "^0.2.0",
+    "@customyai/links": "^0.1.1"
   },
   "devDependencies": {
     "typescript": "^5.5.0",

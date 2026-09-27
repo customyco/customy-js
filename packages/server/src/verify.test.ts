@@ -120,7 +120,8 @@ describe("createRemoteJwks", () => {
         clock += 90_000;
         expect(await verify(await sign(k1, machineClaims, { iat: Math.floor(clock / 1000) }))).not.toBeNull();
         clock += 200_000;
-        expect(await verify(await sign(k1, machineClaims, { iat: Math.floor(clock / 1000) }))).toBeNull();
+        // Pasado maxStale no se puede decidir: es «Access no disponible» (503), no un token inválido (401).
+        await expect(verify(await sign(k1, machineClaims, { iat: Math.floor(clock / 1000) }))).rejects.toMatchObject({ code: "ACCESS_UNAVAILABLE", status: 503 });
     });
 
     it("exige https", () => {

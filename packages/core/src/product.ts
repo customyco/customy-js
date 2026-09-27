@@ -34,6 +34,11 @@ export type ProductClientOptions = Readonly<{
     headers?: Readonly<Record<string, string>>;
     /** Permite `http://` hacia loopback (desarrollo y tests). */
     allowLoopbackHttp?: boolean;
+    /**
+     * Permite `http://` hacia un host privado (RFC 1918, `*.internal`, nombre
+     * de una etiqueta), nunca a uno público. Lo recomendado es el nombre público https.
+     */
+    allowPrivateHttp?: boolean;
 }>;
 
 export type ProductDescriptor = Readonly<{
@@ -79,6 +84,7 @@ export function connectProduct(options: ProductClientOptions, product: ProductDe
         timeoutMs: options.timeoutMs,
         retry: options.retry,
         allowLoopbackHttp: options.allowLoopbackHttp,
+        allowPrivateHttp: options.allowPrivateHttp,
     });
     return { transport, baseUrl: transport.baseUrl, credential, fetch: fetchImpl as typeof fetch };
 }

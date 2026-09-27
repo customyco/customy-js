@@ -12,12 +12,24 @@
  *   const { id } = await send.emails.send({ from: "Acme <hola@acme.com>", to: "ana@x.com", subject: "Hola", html: "<p>…</p>" });
  */
 import { createTransport, type Transport } from "@customyai/core";
-import { createSend, type CustomySend as SendClient } from "@customyai/send";
+import { createSend, SEND_API_VERSION, type CustomySend as SendClient } from "@customyai/send";
 import type {
+  ApprovalEvent,
+  BrandKit,
+  BrandKitInput,
   CancelNotificationResult,
+  ContentCard,
+  ContentCardInput,
+  ContentCardStats,
+  ContentCardStatus,
+  ContentCardTestResult,
   ConversionInput,
   InAppMessage,
   InAppMessageInput,
+  InAppStats,
+  InAppTemplate,
+  InAppTemplateInput,
+  InAppTestResult,
   InboxAction,
   InboxCounts,
   InboxPage,
@@ -37,12 +49,20 @@ import type {
   SubscriberInput,
   SubscriberPreferences,
   SubscriberToken,
+  TemplatePreview,
+  TemplatePreviewInput,
 } from "./engage-types";
 import { warnDeprecated } from "./deprecation";
 import { CustomySendError, legacyCall } from "./errors";
 
 export { CustomySendError } from "./errors";
-export { actionCategoryId, verifyWebhook, WebhookVerificationError, type ActionCategoryInput, type WebhookEvent } from "@customyai/send";
+export { actionCategoryId, SEND_API_VERSION, verifyWebhook, WebhookVerificationError, type ActionCategoryInput, type WebhookEvent } from "@customyai/send";
+
+/**
+ * Quién actúa, cuando un servicio llama en nombre de una persona (cabecera
+ * `x-customy-actor`): quien aprueba no puede ser quien creó.
+ */
+export type ActorOptions = { actor?: string };
 export type * from "./engage-types";
 export type { Address, AddressList, ApiKey, Domain, Email, EmailEvent, EmailStatus, InboundAddress, InboundAttachment, InboundEmail, List, Suppression, Webhook } from "@customyai/send";
 
@@ -121,7 +141,7 @@ export class CustomySend {
     };
     clients.set(this, {
       send: createSend(connection),
-      transport: createTransport({ ...connection, service: "send" }),
+      transport: createTransport({ ...connection, service: "send", headers: { "customy-version": SEND_API_VERSION } }),
     });
   }
 
@@ -269,10 +289,63 @@ export class CustomySend {
   };
 
   readonly inApp = {
-    create: (input: InAppMessageInput, options: { idempotencyKey?: string } = {}): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.create(input, options)),
+    create: (input: InAppMessageInput, options: { idempotencyKey?: string } & ActorOptions = {}): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.create(input, options)),
     list: (params: { status?: InAppMessage["status"]; cursor?: string; limit?: number } = {}): Promise<List<InAppMessage>> => legacyCall(() => inner(this).send.inApp.list(params)),
     get: (id: string): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.get(id)),
-    update: (id: string, patch: Partial<InAppMessageInput>): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.update(id, patch)),
+    update: (id: string, patch: Partial<InAppMessageInput>, options?: ActorOptions): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.update(id, patch, options)),
     archive: (id: string): Promise<{ object: "in_app_message"; id: string; archived: boolean }> => legacyCall(() => inner(this).send.inApp.archive(id)),
+    /** A revisión (`in_review`). */
+    submit: (id: string, options?: ActorOptions): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.submit(id, options)),
+    /** Aprobado por alguien distinto de quien lo creó (403 `approval_same_actor`). */
+    approve: (id: string, options?: ActorOptions): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.approve(id, options)),
+    /** Vuelve a borrador con el motivo. */
+    reject: (id: string, reason?: string, options?: ActorOptions): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.reject(id, reason, options)),
+    /** 409 `approval_required` si la cuenta exige aprobación y no está aprobado. */
+    activate: (id: string, options?: ActorOptions): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.activate(id, options)),
+    pause: (id: string, options?: ActorOptions): Promise<InAppMessage> => legacyCall(() => inner(this).send.inApp.pause(id, options)),
+    /** Esa persona lo ve en su próxima lectura durante 24 h, aunque no le toque. */
+    test: (id: string, input: { subscriber: string; variant_id?: string }): Promise<InAppTestResult> => legacyCall(() => inner(this).send.inApp.test(id, input)),
+    stats: (id: string): Promise<InAppStats> => legacyCall(() => inner(this).send.inApp.stats(id)),
+    /** Historial de publicación (quién envió, aprobó, rechazó, activó o pausó). */
+    approvals: (id: string): Promise<List<ApprovalEvent>> => legacyCall(() => inner(this).send.inApp.approvals(id)),
+    templates: {
+      list: (): Promise<List<InAppTemplate>> => legacyCall(() => inner(this).send.inApp.templates.list()),
+      get: (id: string): Promise<InAppTemplate> => legacyCall(() => inner(this).send.inApp.templates.get(id)),
+      create: (input: InAppTemplateInput): Promise<InAppTemplate> => legacyCall(() => inner(this).send.inApp.templates.create(input)),
+      update: (id: string, patch: Partial<InAppTemplateInput>): Promise<InAppTemplate> => legacyCall(() => inner(this).send.inApp.templates.update(id, patch)),
+      remove: (id: string): Promise<{ object: "in_app_template"; id: string; deleted: boolean }> => legacyCall(() => inner(this).send.inApp.templates.remove(id)),
+    },
+  };
+
+  /** Kits de marca que Send mezcla en el estilo de los mensajes (`content.brand_kit_id`). */
+  readonly brandKits = {
+    list: (): Promise<List<BrandKit>> => legacyCall(() => inner(this).send.brandKits.list()),
+    get: (id: string): Promise<BrandKit> => legacyCall(() => inner(this).send.brandKits.get(id)),
+    create: (input: BrandKitInput): Promise<BrandKit> => legacyCall(() => inner(this).send.brandKits.create(input)),
+    update: (id: string, patch: Partial<BrandKitInput>): Promise<BrandKit> => legacyCall(() => inner(this).send.brandKits.update(id, patch)),
+    remove: (id: string): Promise<{ object: "brand_kit"; id: string; deleted: boolean }> => legacyCall(() => inner(this).send.brandKits.remove(id)),
+  };
+
+  /** Tarjetas de contenido: un feed persistente en la app, con el mismo flujo de aprobación que los mensajes in-app. */
+  readonly contentCards = {
+    create: (input: ContentCardInput, options: { idempotencyKey?: string } & ActorOptions = {}): Promise<ContentCard> => legacyCall(() => inner(this).send.contentCards.create(input, options)),
+    list: (params: { status?: ContentCardStatus; cursor?: string; limit?: number } = {}): Promise<List<ContentCard>> => legacyCall(() => inner(this).send.contentCards.list(params)),
+    get: (id: string): Promise<ContentCard> => legacyCall(() => inner(this).send.contentCards.get(id)),
+    update: (id: string, patch: Partial<ContentCardInput>, options?: ActorOptions): Promise<ContentCard> => legacyCall(() => inner(this).send.contentCards.update(id, patch, options)),
+    remove: (id: string): Promise<{ object: "content_card"; id: string; deleted?: boolean; archived?: boolean }> => legacyCall(() => inner(this).send.contentCards.remove(id)),
+    submit: (id: string, options?: ActorOptions): Promise<ContentCard> => legacyCall(() => inner(this).send.contentCards.submit(id, options)),
+    approve: (id: string, options?: ActorOptions): Promise<ContentCard> => legacyCall(() => inner(this).send.contentCards.approve(id, options)),
+    reject: (id: string, reason?: string, options?: ActorOptions): Promise<ContentCard> => legacyCall(() => inner(this).send.contentCards.reject(id, reason, options)),
+    activate: (id: string, options?: ActorOptions): Promise<ContentCard> => legacyCall(() => inner(this).send.contentCards.activate(id, options)),
+    pause: (id: string, options?: ActorOptions): Promise<ContentCard> => legacyCall(() => inner(this).send.contentCards.pause(id, options)),
+    test: (id: string, input: { subscriber: string; variant_id?: string }): Promise<ContentCardTestResult> => legacyCall(() => inner(this).send.contentCards.test(id, input)),
+    stats: (id: string): Promise<ContentCardStats> => legacyCall(() => inner(this).send.contentCards.stats(id)),
+    approvals: (id: string): Promise<List<ApprovalEvent>> => legacyCall(() => inner(this).send.contentCards.approvals(id)),
+  };
+
+  /** Personalización (`{{ first_name }}`, filtros `default`, `upcase`…). */
+  readonly templates = {
+    /** Un texto o un contenido in-app renderizado para una persona o unos atributos, sin mandar nada. */
+    preview: (input: TemplatePreviewInput): Promise<TemplatePreview> => legacyCall(() => inner(this).send.templates.preview(input)),
   };
 }

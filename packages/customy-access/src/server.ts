@@ -75,7 +75,9 @@ export function machinePrincipalFromClaims(payload: JWTPayload & Record<string, 
  */
 export function createMachineTokenVerifier(options: MachineTokenVerifierOptions): (token: string) => Promise<MachinePrincipal | null> {
     warnDeprecated(MODULE, "use createMachineTokenVerifier from @customyai/server.");
-    return legacy(() => serverMachineTokenVerifier(options));
+    const verify = legacy(() => serverMachineTokenVerifier(options));
+    // 0.x: con Access sin responder también era `null` (`@customyai/server` lanza `ACCESS_UNAVAILABLE`).
+    return (token) => verify(token).catch(() => null);
 }
 
 /** Lee `Authorization: Bearer <token>` de una Request estándar. */
@@ -89,7 +91,7 @@ export async function verifyMachineRequest(
     verify: (token: string) => Promise<MachinePrincipal | null>,
     requiredScopes: readonly string[] = [],
 ): Promise<MachinePrincipal | null> {
-    return serverVerifyMachineRequest(request, verify, requiredScopes);
+    return serverVerifyMachineRequest(request, verify, requiredScopes).catch(() => null);
 }
 
 /**

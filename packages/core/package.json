@@ -1,6 +1,6 @@
 {
   "name": "@customyai/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Customy SDK core: fetch transport, typed errors, retries with Retry-After, idempotency, pagination, platform discovery and machine tokens. Runs on Node, edge runtimes and browsers.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",

@@ -8,7 +8,7 @@ export interface FixedAuthScope {
 
 const aliases = {
     environmentId: ["envId", "env_id", "environmentId", "environment_id", "x-env-id", "x-environment-id", "x-active-environment-id"],
-    organizationSlug: ["orgSlug", "org_slug", "orgId", "org_id", "organizationId", "organization_id", "x-org-id", "x-organization-id"],
+    organizationSlug: ["orgSlug", "org_slug", "orgId", "org_id", "organizationId", "organization_id", "x-org-id", "x-organization-id", "x-organization-slug"],
     publishableKey: ["publishableKey", "publishable_key", "pk", "x-publishable-key"],
 } as const;
 
