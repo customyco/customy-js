@@ -1,6 +1,6 @@
 {
   "name": "@customyai/sdk",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "description": "The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing and Links (plus any discovered product) from their own packages. Server only.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -69,7 +69,7 @@
     "@customyai/core": "^0.1.0",
     "@customyai/data": "^0.1.0",
     "@customyai/links": "^0.1.0",
-    "@customyai/send": "^0.1.0"
+    "@customyai/send": "^0.3.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",

@@ -1,6 +1,6 @@
 {
   "name": "@customyai/send-sdk",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "description": "Deprecated: use @customyai/send. Adapter of the Customy Send client (email API and Customy Engage: push, in-app inbox and in-app messages) kept for one major cycle.",
   "license": "MIT",
   "homepage": "https://send-api.customy.ai/docs",
@@ -85,7 +85,7 @@
   },
   "dependencies": {
     "@customyai/core": "^0.1.0",
-    "@customyai/send": "^0.1.0"
+    "@customyai/send": "^0.3.0"
   },
   "peerDependencies": {
     "react": ">=18"

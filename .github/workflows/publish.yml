@@ -1,38 +1,68 @@
 name: publish
 
-# Un tag <paquete>-v<versión> publica ese paquete con trusted publishing (OIDC) y
-# provenance. Sin tokens: el environment "npm" exige aprobación humana.
+# Every push to main publishes, with npm provenance, each package version that
+# is not on npm yet: dependency order, dist-tag latest / next / backport, and a
+# git tag <package>-v<version>. Idempotent: what is already on npm is skipped.
+# Versions arrive with the commit (exported from the source of truth); nothing
+# is versioned here. npm trusted publishing (OIDC): no tokens.
 on:
   push:
-    tags:
-      - "flags-eval-v[0-9]+.[0-9]+.[0-9]+"
-      - "customy-access-v[0-9]+.[0-9]+.[0-9]+"
-      - "send-sdk-v[0-9]+.[0-9]+.[0-9]+"
-      - "links-sdk-v[0-9]+.[0-9]+.[0-9]+"
-      - "customy-sdk-v[0-9]+.[0-9]+.[0-9]+"
-      - "testing-v[0-9]+.[0-9]+.[0-9]+"
-      - "core-v[0-9]+.[0-9]+.[0-9]+"
-      - "server-v[0-9]+.[0-9]+.[0-9]+"
-      - "web-v[0-9]+.[0-9]+.[0-9]+"
-      - "client-v[0-9]+.[0-9]+.[0-9]+"
-      - "access-v[0-9]+.[0-9]+.[0-9]+"
-      - "data-v[0-9]+.[0-9]+.[0-9]+"
-      - "send-v[0-9]+.[0-9]+.[0-9]+"
-      - "billing-v[0-9]+.[0-9]+.[0-9]+"
-      - "links-v[0-9]+.[0-9]+.[0-9]+"
-      - "sdk-v[0-9]+.[0-9]+.[0-9]+"
-      - "cli-v[0-9]+.[0-9]+.[0-9]+"
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Only this package (npm name or directory, e.g. send-sdk). Empty: all."
+        required: false
+        default: ""
+      dry_run:
+        description: "Plan, build, test and npm publish --dry-run; no publish, no tags."
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: read
 
+# One run at a time: two merges in a row never publish in parallel.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      pending: ${{ steps.plan.outputs.pending }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Plan (repository version vs npm)
+        id: plan
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+        run: |
+          only=()
+          if [ -n "$INPUT_PACKAGE" ]; then only=(--only "$INPUT_PACKAGE"); fi
+          node scripts/publish.mjs plan "${only[@]}" --markdown >> "$GITHUB_STEP_SUMMARY"
+          node scripts/publish.mjs plan "${only[@]}" --json > plan.json
+          echo "pending=$(node -p "require('./plan.json').pending")" >> "$GITHUB_OUTPUT"
+          test "$(node -p "require('./plan.json').blocked")" = "0" || { echo "::error::a dependency is not on npm yet (see the summary)"; exit 1; }
+
   publish:
+    needs: plan
+    if: needs.plan.outputs.pending != '0'
     runs-on: ubuntu-latest
     environment: npm
     permissions:
-      contents: read
-      id-token: write
+      contents: write # git tags <package>-v<version>
+      id-token: write # npm trusted publishing and provenance
+    env:
+      INPUT_PACKAGE: ${{ inputs.package }}
+      DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) || github.ref != 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -46,23 +76,18 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Resolve package from tag
-        id: target
-        run: |
-          name="${GITHUB_REF_NAME%-v*}"
-          version="${GITHUB_REF_NAME##*-v}"
-          dir="packages/$name"
-          test -d "$dir" || { echo "::error::no existe $dir"; exit 1; }
-          actual="$(node -p "require('./$dir/package.json').version")"
-          test "$actual" = "$version" || { echo "::error::el tag $version no coincide con $actual"; exit 1; }
-          echo "dir=$dir" >> "$GITHUB_OUTPUT"
-      # Las dependencias del mismo repo necesitan su dist/ para tipar y probar.
       - run: pnpm -r build
-      - run: pnpm --dir "${{ steps.target.outputs.dir }}" typecheck
-      - run: pnpm --dir "${{ steps.target.outputs.dir }}" test
-      - run: pnpm --dir "${{ steps.target.outputs.dir }}" build
-      - run: pnpm dlx publint@0.3.24 --strict "${{ steps.target.outputs.dir }}"
+      - run: pnpm -r typecheck
+      - run: pnpm -r test
+      - name: publint
+        run: for dir in packages/*/; do pnpm dlx publint@0.3.24 --strict "$dir"; done
+      # npm >= 11.5 exchanges the job's OIDC token for publish credentials.
       - run: npm install --global npm@11.6.2
       - name: Publish with provenance
-        working-directory: ${{ steps.target.outputs.dir }}
-        run: npm publish --access public --provenance
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--summary "$GITHUB_STEP_SUMMARY")
+          if [ -n "$INPUT_PACKAGE" ]; then flags+=(--only "$INPUT_PACKAGE"); fi
+          if [ "$DRY_RUN" = "true" ]; then flags+=(--dry-run); fi
+          node scripts/publish.mjs publish "${flags[@]}"
