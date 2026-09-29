@@ -19,6 +19,7 @@ export {
     type TokenVerifier,
     type UserPrincipal,
 } from "./tokens";
+export { fetchUserInfo, type UserInfo, type UserInfoOptions } from "./userinfo";
 export {
     ACTOR_ASSERTION_HEADER,
     assertActorAssertionSecret,

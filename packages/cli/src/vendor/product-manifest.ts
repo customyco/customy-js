@@ -12,6 +12,7 @@ const identifier = z.string().regex(/^[a-z][a-z0-9-]{1,62}$/);
 
 export const ConnectedOperationSchema = z.enum([
   "read", "propose", "submit", "read_owned", "write_owned", "research", "deliver_budget_alert", "deliver_notification",
+  "request_operator_approval",
 ]);
 export type ConnectedOperation = z.infer<typeof ConnectedOperationSchema>;
 
@@ -73,9 +74,11 @@ export const CONNECTABLE_PRODUCT_MANIFESTS: readonly ProductManifest[] = [
   product("customy-content", [{ kind: "external_destination", operations: { allowed: ["read"], mode: "exact" } }]),
   product("customy-storage"),
   product("customy-data", [{ kind: "external_source", keys: ["analytics-source"], operations: { allowed: ["submit"], mode: "exact" } }]),
+  // Experiments: las apps conectadas lo referencian para evaluar flags con su clave publicable; sin enlaces propios todavía (F5).
+  product("customy-experiments"),
   product("customy-analytics"),
   product("customy-campaigns", [{ kind: "external_communication", keys: ["weekly-brief"], operations: { allowed: ["read"], mode: "exact" } }]),
-  product("customy-engagement", [{ kind: "external_communication", keys: ["notification-delivery"], operations: { allowed: ["deliver_notification"], mode: "exact" } }]),
+  product("customy-engagement", [{ kind: "external_communication", keys: ["notification-delivery", "operator-approval"], operations: { allowed: ["deliver_notification", "request_operator_approval"], mode: "subset" } }]),
   // Una referencia de solo lectura a un sitio de Pages del Workspace; no concede edición ni publicación.
   product("customy-pages", [{ kind: "product", resourceIdPattern: "^[0-9]{6,20}$", operations: { allowed: ["read"], mode: "exact", required: false }, maxPerConnection: 1 }], true),
   // La clave pública identifica el sitio SiteSight enlazado por un administrador del Workspace.

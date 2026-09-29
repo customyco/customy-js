@@ -229,6 +229,24 @@ export async function createCustomy<App extends CustomyAppTypes = CustomyAppType
 export type { CustomyPlatformConfiguration, MachineTokenProvider, MachineTokens, Transport } from "@customyai/core";
 export { CustomySdkError, isCustomySdkError } from "@customyai/core";
 
+// Provisioning of TEST users: it takes an Access API key of ONE environment (not the app identity
+// of `createCustomy`), so it is a standalone client plus its typed errors. Named re-exports on purpose:
+// a `export * as` namespace puts the absolute path of the build machine into the API report.
+export {
+    createProvisioning,
+    CustomyAuthError,
+    CustomyCapabilityDisabledError,
+    CustomyConflictError,
+    CustomyEnvironmentMismatchError,
+    CustomyProvisioningError,
+    CustomyRateLimitError,
+    CustomyScopeError,
+    CustomyValidationError,
+    PROVISIONING_SCOPES,
+    type CustomyProvisioning,
+    type ProvisioningOptions,
+} from "@customyai/provisioning";
+
 export {
     createPeople,
     PEOPLE_AUDIENCE,
@@ -274,6 +292,7 @@ export {
     type CustomyConnectedApp,
     type IngestReceipt,
     type UserActivityInput,
+    type UserConsentUpdatedInput,
     type UserDeletedInput,
     type UserIdentityUpdatedInput,
     type UserRegisteredInput,
@@ -282,6 +301,8 @@ export {
 export {
     APP_USAGE_STAGES,
     COMMERCIAL_STAGES,
+    CONNECTED_APPLICATION_CONSENT_SOURCES,
+    CONNECTED_APPLICATION_CONSENT_STATUSES,
     DEFAULT_ROLE_PACKS,
     DIGITAL_CONSENT_AGE,
     evaluateContactability,
@@ -301,6 +322,11 @@ export {
     ROLE_PACKS,
     ROLE_TYPE_CATALOG,
     type ApplicationUsersSummary,
+    type ConnectedApplicationConsent,
+    type ConnectedApplicationConsentItem,
+    type ConnectedApplicationAnalyticsConsent,
+    type ConnectedApplicationConsentSource,
+    type ConnectedApplicationConsentStatus,
     type ConnectedApplicationUserIdentity,
     type ConsentSignal,
     type ContactabilityDecision,

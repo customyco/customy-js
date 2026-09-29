@@ -1,7 +1,7 @@
 {
   "name": "@customyai/sdk",
-  "version": "0.6.0",
-  "description": "The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing, Links and CRM People (plus any discovered product), and emits connected-app user lifecycle events from their own packages. Server only.",
+  "version": "0.13.0",
+  "description": "The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing, Links, Provisioning and CRM People (plus any discovered product), and emits connected-app user lifecycle events from their own packages. Server only.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
   "repository": {
@@ -47,7 +47,24 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./testing": {
+      "import": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.mjs"
+      },
+      "require": {
+        "types": "./dist/testing.d.cts",
+        "default": "./dist/testing.cjs"
+      }
+    },
     "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "testing": [
+        "./dist/testing.d.ts"
+      ]
+    }
   },
   "files": [
     "dist",
@@ -64,12 +81,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/access": "^0.2.0",
+    "@customyai/access": "^0.6.0",
     "@customyai/billing": "^0.1.1",
     "@customyai/core": "^0.2.0",
     "@customyai/data": "^0.2.0",
     "@customyai/links": "^0.1.1",
-    "@customyai/send": "^0.6.0",
+    "@customyai/provisioning": "^0.1.0",
+    "@customyai/send": "^0.7.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

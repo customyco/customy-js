@@ -79,6 +79,34 @@ describe("sign-in flows", () => {
         expect(await client.signUp("Ana", "a@example.com", "pw")).toEqual({ error: "legacy", status: 400, code: "HTTP_400", retryable: false });
     });
 
+    it("flags verificationRequired when sign-up opens no session or sign-in hits EMAIL_NOT_VERIFIED", async () => {
+        const responses = [
+            json({ token: null, user: { id: "u1" } }),
+            json({ token: "t", user: { id: "u2" } }),
+            json({ error: { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" } }, 403),
+            json({ error: { code: "INVALID_EMAIL_OR_PASSWORD", message: "Invalid email or password" } }, 401),
+        ];
+        const { fetch } = fakeFetch((_url, _init, index) => responses[index]!);
+        const client = createCustomyClient({ fetch });
+        expect(await client.signUp("Ana", "a@example.com", "pw")).toEqual({ url: undefined, redirect: undefined, verificationRequired: true });
+        expect(await client.signUp("Ben", "b@example.com", "pw")).toEqual({ url: undefined, redirect: undefined });
+        expect(await client.signInWithEmail("a@example.com", "pw")).toEqual({ error: "Email not verified", status: 403, code: "EMAIL_NOT_VERIFIED", retryable: false, verificationRequired: true });
+        expect(await client.signInWithEmail("a@example.com", "bad")).toEqual({ error: "Invalid email or password", status: 401, code: "INVALID_EMAIL_OR_PASSWORD", retryable: false });
+    });
+
+    it("resends the verification email through the same-origin auth path with scope and callback", async () => {
+        const responses = [json({ status: true }), json({ error: { code: "TOO_MANY_REQUESTS", message: "Slow down" } }, 429)];
+        const { fetch, calls } = fakeFetch((_url, _init, index) => responses[index]!);
+        const client = createCustomyClient({ baseUrl: "https://app.fixture.invalid", ...scope, fetch });
+        expect(await client.sendVerificationEmail("a@example.com", { callbackURL: "/premium", environmentId: "env_other" })).toEqual({ success: true });
+        expect(calls[0]!.url).toBe("https://app.fixture.invalid/api/auth/send-verification-email");
+        expect(calls[0]!.init.method).toBe("POST");
+        expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ email: "a@example.com", callbackURL: "/premium" });
+        expect(new Headers(calls[0]!.init.headers).get("x-env-id")).toBe("env_other");
+        const failed = await client.sendVerificationEmail("a@example.com");
+        expect(failed).toMatchObject({ status: 429, code: "TOO_MANY_REQUESTS", retryable: true });
+    });
+
     it("reports a timed-out sign-in instead of hanging", async () => {
         const fetch = vi.fn((_input: RequestInfo | URL, init: RequestInit = {}) => new Promise<Response>((_resolve, reject) => {
             init.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "TimeoutError" })));

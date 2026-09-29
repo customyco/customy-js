@@ -431,6 +431,37 @@ export type NotificationStats = {
   test?: { notifications: number; data: Array<{ day: string; channel: string; event: string; count: number }> };
 };
 
+/** Una línea de la compra: el producto (referencia del catálogo de Stories), cuántas unidades y, si se quiere, su importe en unidad menor como texto. */
+export type StoryConversionProduct = { product: { connector: string; external_id: string; variant_id?: string }; quantity?: number; line_value?: string };
+
+/**
+ * La compra que cierra la tienda, reportada por SU BACKEND (`POST /api/stories/conversions`, llave o token con el alcance `stories:convert`,
+ * que `stories:manage` no implica). Es la única vía por la que entra un importe a la atribución de ingresos de una story: la app del usuario solo manda
+ * una señal sin importe (auditoría de seguridad de Stories, A-1).
+ */
+export type StoryConversionInput = {
+  /** Idempotencia: la misma compra con el mismo `event_id` cuenta una vez (8–64 caracteres: letras, números, `_` y `-`). */
+  event_id: string;
+  /** La persona, con el id con el que tu app la conoce. */
+  subscriber: string;
+  /** Importe en unidad MENOR (centavos) como texto: `"4599000"`. Nunca se convierten monedas. */
+  value: string;
+  /** Moneda ISO 4217 de tres letras. */
+  currency: string;
+  type?: "purchase";
+  order_id?: string;
+  session_id?: string;
+  /** ISO 8601; sin él, el momento de la llamada. */
+  occurred_at?: string;
+  products?: StoryConversionProduct[];
+  /** La story, página y componente a los que se atribuye, si los conoces. */
+  story_id?: string;
+  slide_id?: string;
+  component_id?: string;
+  utm?: Record<string, string>;
+};
+export type StoryConversion = { object: "story_conversion"; accepted: true; event_id: string };
+
 export type ConversionInput = {
   subscriber: string;
   /** Id propio de la conversión (8…120): repetirla con el mismo id no la cuenta dos veces. */

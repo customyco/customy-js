@@ -73,6 +73,12 @@ export interface SignInResult {
     redirect?: boolean;
     twoFactorRedirect?: boolean;
     success?: boolean;
+    /**
+     * `true` cuando la cuenta existe pero Access pide verificar el correo antes de abrir sesión:
+     * tras `signUp` (no hubo sesión) o en el fallo `EMAIL_NOT_VERIFIED` de `signInWithEmail`.
+     * La app muestra «revisa tu correo» y ofrece `sendVerificationEmail`.
+     */
+    verificationRequired?: boolean;
 }
 
 export interface ScopedAuthOptions {
@@ -241,6 +247,13 @@ export function authFailureFromResponse(status: number, data: unknown): AuthActi
 
 function failureFields(failure: AuthActionFailure): Pick<SignInResult, "error" | "status" | "code" | "retryable"> {
     return { error: failure.error, status: failure.status, code: failure.code, retryable: failure.retryable };
+}
+
+/** Código estable con el que Access rechaza el inicio de sesión de una cuenta con el correo sin verificar. */
+export const EMAIL_NOT_VERIFIED_CODE = "EMAIL_NOT_VERIFIED";
+
+function signInFailureFields(failure: AuthActionFailure): Pick<SignInResult, "error" | "status" | "code" | "retryable" | "verificationRequired"> {
+    return failure.code === EMAIL_NOT_VERIFIED_CODE ? { ...failureFields(failure), verificationRequired: true } : failureFields(failure);
 }
 
 function userQuery(params: Record<string, string | undefined>): string {
@@ -440,7 +453,7 @@ export function createCustomyClient(options: CustomyClientOptions = {}) {
         async signInWithEmail(email: string, password: string, callbackURLOrOptions?: string | ScopedAuthOptions): Promise<SignInResult> {
             const scope = typeof callbackURLOrOptions === "string" ? { callbackURL: callbackURLOrOptions } : (callbackURLOrOptions ?? {});
             const result = await authAction("/api/auth/sign-in/email", { email, password, ...(scope.callbackURL ? { callbackURL: scope.callbackURL } : {}) }, "Sign-in failed", scope, options.signInTimeoutMs ?? 30_000);
-            if (!result.ok) return failureFields(result.failure);
+            if (!result.ok) return signInFailureFields(result.failure);
             if (result.data.twoFactorRedirect) return { twoFactorRedirect: true };
             return { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined };
         },
@@ -448,7 +461,16 @@ export function createCustomyClient(options: CustomyClientOptions = {}) {
         async signUp(name: string, email: string, password: string, callbackURLOrOptions?: string | ScopedAuthOptions): Promise<SignInResult> {
             const scope = typeof callbackURLOrOptions === "string" ? { callbackURL: callbackURLOrOptions } : (callbackURLOrOptions ?? {});
             const result = await authAction("/api/auth/sign-up/email", { name, email, password, ...(scope.callbackURL ? { callbackURL: scope.callbackURL } : {}) }, "Sign-up failed", scope, options.signInTimeoutMs ?? 30_000);
-            return result.ok ? { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined } : failureFields(result.failure);
+            if (!result.ok) return failureFields(result.failure);
+            // Access no abre sesión mientras el correo siga sin verificar: la respuesta trae `token: null`.
+            return { url: result.data.url as string | undefined, redirect: result.data.redirect as boolean | undefined, ...(result.data.token === null ? { verificationRequired: true } : {}) };
+        },
+
+        /** Reenvía el correo de verificación de una cuenta que aún no lo verificó. */
+        async sendVerificationEmail(email: string, callbackURLOrOptions?: string | ScopedAuthOptions): Promise<SignInResult> {
+            const scope = typeof callbackURLOrOptions === "string" ? { callbackURL: callbackURLOrOptions } : (callbackURLOrOptions ?? {});
+            const result = await authAction("/api/auth/send-verification-email", { email, ...(scope.callbackURL ? { callbackURL: scope.callbackURL } : {}) }, "Could not send the verification email", scope);
+            return result.ok ? { success: true } : failureFields(result.failure);
         },
 
         async signInWithMagicLink(email: string, callbackURL?: string): Promise<SignInResult> {

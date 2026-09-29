@@ -4,6 +4,8 @@
  *   customy apps validate [--file customy.app.json]
  *   customy apps codegen  [--file customy.app.json] [--out src/customy.generated.ts]
  *   customy apps sync     --workspace-env <envId> [--file customy.app.json] [--reason "…"]
+ *   customy users | audit | policy | whoami | login   (provisioning of TEST users; see ./provisioning.ts)
+ *   customy flags | segments | experiments           (Customy Experiments control plane; see ./experiments.ts)
  *
  * `sync` lee CUSTOMY_ACCESS_URL y CUSTOMY_ACCESS_TOKEN (un token de un
  * administrador del Workspace) del entorno; nunca de la línea de comandos.
@@ -12,6 +14,8 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { generateAppTypes } from "./codegen.js";
 import { syncApp, validateManifest } from "./apps.js";
+import { PROVISIONING_GROUPS, PROVISIONING_HELP, runProvisioningCli } from "./provisioning.js";
+import { EXPERIMENTS_GROUPS, EXPERIMENTS_HELP, runExperimentsCli } from "./experiments.js";
 
 export type CliIo = {
   cwd: string;
@@ -19,6 +23,10 @@ export type CliIo = {
   out: (line: string) => void;
   err: (line: string) => void;
   fetch?: typeof fetch;
+  /** Is stdin an interactive terminal? Production writes ask for confirmation only if so. */
+  isTTY?: boolean;
+  /** Asks a question on the terminal (the prompt goes to stderr) and returns the typed line. */
+  prompt?: (question: string) => Promise<string>;
 };
 
 function option(args: string[], name: string): string | undefined {
@@ -45,8 +53,15 @@ async function loadManifest(args: string[], io: CliIo) {
 
 export async function runCli(argv: string[], io: CliIo): Promise<number> {
   const [group, command, ...args] = argv;
+  if (group === "--help" || group === "help") {
+    io.out(["uso: customy apps <validate|codegen|sync> [--file customy.app.json]", ...PROVISIONING_HELP, ...EXPERIMENTS_HELP].join("\n"));
+    return 0;
+  }
+  if ((PROVISIONING_GROUPS as readonly string[]).includes(group ?? "")) return runProvisioningCli(group!, argv.slice(1), io);
+  if ((EXPERIMENTS_GROUPS as readonly string[]).includes(group ?? "")) return runExperimentsCli(group!, argv.slice(1), io);
   if (group !== "apps" || !["validate", "codegen", "sync"].includes(command ?? "")) {
     io.err("uso: customy apps <validate|codegen|sync> [--file customy.app.json]");
+    io.err("     customy users | audit | policy | whoami | login | flags | segments | experiments   (customy --help)");
     return 2;
   }
   const manifest = await loadManifest(args, io);

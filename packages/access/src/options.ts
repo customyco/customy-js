@@ -10,9 +10,17 @@ export const ACCESS_AUDIENCE = "customy-access";
  *  - `users:contact:read`: `users.contact` (se pide explícito, ningún comodín lo concede);
  *  - `users:read`: `users.list` / `iterate` / `get`;
  *  - `catalog:read`: `catalog.*`, el catálogo del propio entorno (nunca el maestro global);
- *  - `flags:read`: la vista completa de flags en servidor.
+ *  - `flags:read`: la vista completa de flags en servidor;
+ *  - `app-relationships:read`: `relationships.list` y `permissions.checkMany`;
+ *  - `app-relationships:write`: `relationships.write`;
+ *  - `app-plans:write`: `plans.set`.
+ * Los tres últimos solo valen con el JWT de máquina (`machineTokens`) y solo
+ * dentro del prefijo `<clave de la app>/` de sus tipos.
  */
-export const ACCESS_SCOPES = ["capabilities:read", "users:contact:read", "users:read", "catalog:read", "flags:read"] as const;
+export const ACCESS_SCOPES = [
+    "capabilities:read", "users:contact:read", "users:read", "catalog:read", "flags:read",
+    "app-relationships:read", "app-relationships:write", "app-plans:write",
+] as const;
 export type AccessScope = (typeof ACCESS_SCOPES)[number];
 
 export type AccessOptions = ProductClientOptions & Readonly<{

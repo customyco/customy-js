@@ -146,3 +146,25 @@ export type UserSummary = {
 
 /** Contacto de un usuario para enviarle (`users:contact:read`). */
 export type UserContact = { userId: string; email: string; emailVerified: boolean; name: string | null; locale: string | null };
+
+/**
+ * Una relación de la app: `subjectType` es `user` o `<clave>/…`, `objectType`
+ * siempre `<clave>/…`; `relation` en `^[a-z0-9][a-z0-9_.:-]{0,63}$` (`owner`,
+ * `role:<clave-de-rol>`, `perm:<permiso>`…); ids de 1 a 128 caracteres.
+ */
+export type RelationshipTuple = { subjectType: string; subjectId: string; relation: string; objectType: string; objectId: string };
+
+/** Filtro de `relationships.list`: `objectType` obligatorio, el resto opcional. */
+export type RelationshipQuery = { objectType: string; objectId?: string; subjectType?: string; subjectId?: string; relation?: string };
+
+export type RelationshipList = { tuples: RelationshipTuple[]; truncated: boolean };
+
+/** Resultado de `relationships.write`: filas nuevas y borradas (escribir una que ya existe no cuenta). */
+export type RelationshipWriteResult = { written: number; deleted: number; consistencyToken: string | null };
+
+export type PermissionCheckInput = { subject: { type: "user"; id: string }; permission: string; object: { type: string; id: string } };
+
+/** `owner` (dueño), `direct` (`perm:<permiso>`), `role:<clave>` (rol con ese permiso sobre ese objeto) o `null`. */
+export type PermissionCheckResult = { allowed: boolean; via: "owner" | "direct" | `role:${string}` | null };
+
+export type MemberPlanResult = { userId: string; planCode: string | null; previousPlanCode: string | null };

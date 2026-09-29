@@ -1,5 +1,11 @@
 # @customyai/client
 
+## 0.3.0
+
+### Minor Changes
+
+- Correo verificado sin llamadas a mano. `@customyai/client`: `signUp` y `signInWithEmail` devuelven `verificationRequired: true` cuando Access pide verificar el correo antes de abrir sesión, y el nuevo `sendVerificationEmail(email, opciones?)` reenvía el correo de verificación. `@customyai/server`: el nuevo `fetchUserInfo(token, { issuer })` lee el perfil con el token del usuario (`emailVerified` es `null` si Access no lo informa, nunca se asume verificado) y falla con `ACCESS_UNAVAILABLE` si Access no contesta.
+
 ## 0.2.0
 
 ### Minor Changes

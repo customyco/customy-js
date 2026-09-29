@@ -84,7 +84,7 @@ export type AppManifest = z.infer<typeof AppManifestSchema>;
 
 /**
  * Scopes de Access que una app puede declarar para `customy-access`. Lista
- * blanca cerrada de LECTURAS acotadas al entorno de la propia app: Access no
+ * blanca cerrada, acotada al entorno (y al prefijo) de la propia app: Access no
  * expone su prefijo (`access:`) a las apps.
  *  - `capabilities:read`: el plan de sus usuarios (`GET /api/v1/me`).
  *  - `users:contact:read`: el contacto de UN usuario al enviarle
@@ -93,10 +93,22 @@ export type AppManifest = z.infer<typeof AppManifestSchema>;
  *  - `flags:read`: la instantánea completa de flags del entorno (runtime).
  *  - `catalog:read` (2026-09-27): el catálogo comercial de su entorno —nunca el
  *    maestro global de Customy— (`GET …/catalog` y `…/catalog/:entity`).
- * Cualquier otro scope (`admin:*`, `*`, escrituras, comodines) es
+ *  - `app-relationships:read` / `app-relationships:write` (2026-09-28): las
+ *    relaciones y permisos por recurso de la PROPIA app (`/api/v1/env/:envId/
+ *    app-relationships` y `…/app-permissions/check`), confinadas a su prefijo
+ *    `<clave>/`; nunca las del resto del entorno. No se llaman
+ *    `relationships:*` a propósito: ese es el permiso de la API ReBAC de
+ *    administración (`/api/admin/env/:envId/relationships/*`), que no conoce
+ *    prefijos.
+ *  - `app-plans:write` (2026-09-28): fijar el plan de UN miembro de su entorno
+ *    entre los `plans[]` de su manifiesto (`PUT …/app-members/:userId/plan`).
+ * Cualquier otro scope (`admin:*`, `*`, otras escrituras, comodines) es
  * `SCOPE_OUTSIDE_PRODUCT`: una app nunca obtiene administración de Access.
  */
-export const APP_ACCESS_SCOPES = ["capabilities:read", "users:contact:read", "users:read", "flags:read", "catalog:read"] as const;
+export const APP_ACCESS_SCOPES = [
+  "capabilities:read", "users:contact:read", "users:read", "flags:read", "catalog:read",
+  "app-relationships:read", "app-relationships:write", "app-plans:write",
+] as const;
 export type AppAccessScope = (typeof APP_ACCESS_SCOPES)[number];
 const APP_ACCESS_SCOPE_SET: ReadonlySet<string> = new Set(APP_ACCESS_SCOPES);
 

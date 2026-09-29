@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.9.3
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/client@0.3.0
+  - @customyai/server@0.3.0
+  - @customyai/web@0.2.1
+
+## 0.9.2
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.6.0
+
+## 0.9.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.5.0
+
+## 0.9.0
+
+### Minor Changes
+
+- Contrato del evaluador (D6): `EvaluationDetail` añade `reasonCode` (`default | off | killed | prerequisite_failed | rule:<id> | rollout | segment:<key> | error`) y `bucketBp` (0..9999). `reason` y `bucket` no cambian. Nuevos `createDependencies` (prerrequisitos con ciclo y profundidad máxima), `LEGACY_REASON_ALIASES` y tope de 512 caracteres para `regex`.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.4.0
+
+## 0.8.5
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.3.0
+
 ## 0.8.4
 
 ### Patch Changes
