@@ -8,6 +8,13 @@ import { ACCESS_AUDIENCE, ACCESS_DEFAULT_BASE_URL, type AccessOptions, type Acce
 import type {
     AccessCatalog,
     AccessMeSnapshot,
+    MemberPlanResult,
+    PermissionCheckInput,
+    PermissionCheckResult,
+    RelationshipList,
+    RelationshipQuery,
+    RelationshipTuple,
+    RelationshipWriteResult,
     CapabilityCheck,
     CatalogAddOn,
     CatalogFeature,
@@ -61,6 +68,12 @@ export type CustomyAccess<Capability extends string = string> = ReturnType<typeo
  * `capabilities:read`, `users.contact` → `users:contact:read`, `users.*` →
  * `users:read`, `catalog.*` → `catalog:read`). Con `scopes`, un solo token con
  * esos scopes para todo. Todos los métodos aceptan `signal` y `timeoutMs`.
+ *
+ * Relaciones y planes de la propia app (Access como fuente de verdad de sus
+ * roles y permisos por recurso): `relationships.list/write` y
+ * `permissions.checkMany` (`app-relationships:read|write`) y `plans.set`
+ * (`app-plans:write`), siempre en su entorno y dentro del prefijo
+ * `<clave de la app>/` de sus tipos.
  */
 export function createAccess<Capability extends string = string>(options: AccessOptions): CustomyAccess<Capability> {
     return buildAccess<Capability>(options);
@@ -83,18 +96,26 @@ function buildAccess<Capability extends string>(options: AccessOptions) {
         return transport;
     };
     // La ruta se resuelve dentro de la llamada: un entorno que falta es un rechazo, no una excepción síncrona.
-    const get = <T>(method: string, scope: AccessScope, path: string | (() => string), query: Query | (() => Query) | undefined, call: CallOptions | undefined) =>
+    const send = <T>(verb: "GET" | "POST" | "PUT" | "DELETE", method: string, scope: AccessScope, path: string | (() => string), query: Query | (() => Query) | undefined,
+        call: CallOptions | undefined, body?: unknown) =>
         accessCall(async () => {
             const resolvedPath = typeof path === "function" ? path() : path;
-            const request = { query: typeof query === "function" ? query() : query, ...callOptions(call) };
-            return (await transportFor(scope).request<T>("GET", resolvedPath, request)).data;
+            const request = {
+                query: typeof query === "function" ? query() : query, ...callOptions(call),
+                // Las escrituras de relaciones son idempotentes por contenido: con clave, el transporte puede reintentarlas.
+                ...(body !== undefined ? { body, ...(verb === "POST" ? { idempotencyKey: true } : {}) } : {}),
+            };
+            return (await transportFor(scope).request<T>(verb, resolvedPath, request)).data;
         }).catch((error: unknown) => { throw withRequiredScope(error, method, scope); });
+    const get = <T>(method: string, scope: AccessScope, path: string | (() => string), query: Query | (() => Query) | undefined, call: CallOptions | undefined) =>
+        send<T>("GET", method, scope, path, query, call);
     const environment = (explicit: string | undefined): string => {
         const value = explicit ?? options.environmentId;
         if (!value) throw new CustomyAccessError({ code: "SDK_ENVIRONMENT_REQUIRED", message: "Pass environmentId (in the options or the call)" });
         return value;
     };
     const admin = (environmentId: string | undefined, path: string) => () => `/api/admin/env/${enc(environment(environmentId))}${path}`;
+    const runtime = (environmentId: string | undefined, path: string) => () => `/api/v1/env/${enc(environment(environmentId))}${path}`;
     type Scope = CallOptions & { environmentId?: string };
     type UserScope = Scope & { userId?: string };
 
@@ -137,6 +158,34 @@ function buildAccess<Capability extends string>(options: AccessOptions) {
             addOns: catalogItems<CatalogAddOn>("addOns", "/catalog/addons"),
             prices: catalogItems<CatalogPrice>("prices", "/catalog/prices"),
             meters: catalogItems<CatalogMeter>("meters", "/catalog/meters"),
+        },
+
+        /**
+         * Relaciones de la app en Access (`<clave>/…`). Roles y permisos por
+         * recurso: `owner`, `role:<clave>` y `perm:<permiso>` del usuario sobre
+         * el objeto, y `perm:<permiso>` de `<clave>/role:<objectId>#<rol>`.
+         */
+        relationships: {
+            /** Hasta 1000 tuplas que cumplen el filtro (`truncated` si hay más). Scope `app-relationships:read`. */
+            list: (query: RelationshipQuery, params: Scope = {}) =>
+                send<RelationshipList>("GET", "relationships.list", "app-relationships:read", runtime(params.environmentId, "/app-relationships"), { ...query }, params),
+            /** Hasta 500 escrituras + borrados en una transacción; escribir una tupla que ya existe no hace nada. Scope `app-relationships:write`. */
+            write: (change: { writes?: readonly RelationshipTuple[]; deletes?: readonly RelationshipTuple[] }, params: Scope = {}) =>
+                send<RelationshipWriteResult>("POST", "relationships.write", "app-relationships:write", runtime(params.environmentId, "/app-relationships"), undefined, params,
+                    { writes: change.writes ?? [], deletes: change.deletes ?? [] }),
+        },
+
+        permissions: {
+            /** Hasta 100 comprobaciones en una petición, en el mismo orden. Scope `app-relationships:read`. */
+            checkMany: (checks: readonly PermissionCheckInput[], params: Scope = {}) =>
+                send<{ results: PermissionCheckResult[] }>("POST", "permissions.checkMany", "app-relationships:read", runtime(params.environmentId, "/app-permissions/check"), undefined, params, { checks })
+                    .then((response) => response.results),
+        },
+
+        plans: {
+            /** Fija (o con `null` borra) el plan de un miembro entre los `plans[]` del manifiesto publicado. Scope `app-plans:write`. */
+            set: (userId: string, planCode: string | null, params: Scope = {}) =>
+                send<MemberPlanResult>("PUT", "plans.set", "app-plans:write", runtime(params.environmentId, `/app-members/${enc(userId)}/plan`), undefined, params, { planCode }),
         },
 
         users: {

@@ -1,6 +1,6 @@
 {
   "name": "@customyai/flags-eval",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pure local feature flag evaluation engine for Customy FME.",
   "license": "MIT",
   "repository": {

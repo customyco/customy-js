@@ -14,7 +14,7 @@
  * navegador) o, en servidor, un token de máquina con `flags:read` (vista
  * completa, con miembros de segmentos).
  */
-import { createSegmentResolver, evaluate, type EvalContext, type EvaluationDetail, type FlagDefinition, type SegmentDefinition } from "@customyai/flags-eval";
+import { createDependencies, evaluate, type EvalContext, type EvaluationDetail, type FlagDefinition, type SegmentDefinition } from "@customyai/flags-eval";
 import { CustomySdkError, createIdempotencyKey, createTransport, readErrorEnvelope, resolveBearer, type AccessTokenProvider, type RetryPolicy, type Transport } from "@customyai/core";
 import { CustomyAccessError, toAccessError } from "./errors";
 import { ACCESS_DEFAULT_BASE_URL } from "./options";
@@ -113,6 +113,12 @@ export type FlagConversionOptions = {
 
 const SDK = { name: "@customyai/access" } as const;
 
+/** Tope de la cola en memoria por tipo: en una caída larga se descarta lo más viejo, no se agota la memoria. */
+const MAX_QUEUED = 50_000;
+const MAX_FLUSH_BACKOFF_MS = 5 * 60_000;
+/** El servidor rechazó el lote por inválido: reintentarlo igual nunca lo arregla. */
+const PERMANENT_REJECTIONS = new Set([400, 413, 422]);
+
 export class CustomyFlagsClient {
     private readonly baseUrl: string;
     private readonly fetchImpl: typeof fetch;
@@ -131,6 +137,8 @@ export class CustomyFlagsClient {
     private jwks?: Promise<Array<Record<string, unknown>>>;
     private flushTimer?: ReturnType<typeof setInterval>;
     private pollTimer?: ReturnType<typeof setInterval>;
+    private flushFailures = 0;
+    private nextFlushAt = 0;
 
     constructor(options: FlagsClientOptions) {
         if (Boolean(options.publishableKey) === (options.accessToken !== undefined)) {
@@ -240,15 +248,8 @@ export class CustomyFlagsClient {
     getTreatment(flagKey: string, context: EvalContext, options: FlagEvaluationOptions = {}): EvaluationDetail {
         const snapshot = this.snapshot;
         const flag = snapshot?.flags.find((item) => item.key === flagKey);
-        if (!snapshot || !flag) return { flagKey, treatment: "control", value: undefined, reason: "error", error: snapshot ? "flag_not_found" : "snapshot_not_loaded" };
-        const segmentContains = createSegmentResolver(snapshot.segments ?? []);
-        const detail = evaluate(flag, context, {
-            segmentContains,
-            treatmentOf: (dependencyKey) => {
-                const dependency = snapshot.flags.find((item) => item.key === dependencyKey);
-                return dependency ? evaluate(dependency, context, { segmentContains, treatmentOf: () => undefined }).treatment : undefined;
-            },
-        });
+        if (!snapshot || !flag) return { flagKey, treatment: "control", value: undefined, reason: "error", reasonCode: "error", error: snapshot ? "flag_not_found" : "snapshot_not_loaded" };
+        const detail = evaluate(flag, context, createDependencies(snapshot.flags, snapshot.segments ?? [], context));
         if (options.track !== false) this.track(detail, context);
         return detail;
     }
@@ -357,7 +358,8 @@ export class CustomyFlagsClient {
             occurredAt: new Date().toISOString(),
             attributes: sanitizeAttributes(context.attributes),
         });
-        if (this.impressions.length >= this.maxBatchSize) void this.flush().catch(() => undefined);
+        if (this.impressions.length > MAX_QUEUED) this.impressions.splice(0, this.impressions.length - MAX_QUEUED);
+        if (this.impressions.length >= this.maxBatchSize) void this.autoFlush();
     }
 
     /**
@@ -378,13 +380,14 @@ export class CustomyFlagsClient {
             value,
             occurredAt: new Date().toISOString(),
         });
-        if (this.conversions.length >= this.maxBatchSize) void this.flush().catch(() => undefined);
+        if (this.conversions.length > MAX_QUEUED) this.conversions.splice(0, this.conversions.length - MAX_QUEUED);
+        if (this.conversions.length >= this.maxBatchSize) void this.autoFlush();
         return true;
     }
 
     startAutoFlush(): void {
         if (this.flushTimer) return;
-        this.flushTimer = setInterval(() => void this.flush().catch(() => undefined), this.flushIntervalMs);
+        this.flushTimer = setInterval(() => void this.autoFlush(), this.flushIntervalMs);
     }
 
     stopAutoFlush(): void {
@@ -392,20 +395,50 @@ export class CustomyFlagsClient {
         this.flushTimer = undefined;
     }
 
-    /** Envía impresiones y conversiones pendientes; lo que falla vuelve a la cola. Devuelve cuántas salieron. */
+    /** Envío automático (temporizador y umbral de lote): respeta el backoff tras un fallo; `flush()` a mano siempre intenta. */
+    private async autoFlush(): Promise<void> {
+        if (Date.now() < this.nextFlushAt) return;
+        await this.flush().catch(() => undefined);
+    }
+
+    /**
+     * Envía impresiones y conversiones pendientes. Solo un `2xx` que confirma
+     * el registro las da por enviadas: ante cualquier otro resultado (red,
+     * 5xx, 429, 503 con `Retry-After`, o un 202 `*_NOT_RECORDED` de un servidor
+     * antiguo) el lote vuelve a la cola, y los envíos automáticos esperan con
+     * backoff exponencial (o el `Retry-After` del servidor, lo que sea mayor).
+     * Un 400/413/422 es un rechazo definitivo del lote y no se reencola.
+     * Devuelve cuántas salieron.
+     */
     async flush(): Promise<number> {
         const impressions = this.impressions.splice(0, this.maxBatchSize);
         const conversions = this.conversions.splice(0, this.maxBatchSize);
         // Access y Events deduplican (exposición por hora, conversión por id): repetir el lote es seguro.
-        const post = (path: string, body: unknown) => this.transport.post(path, body, { idempotencyKey: true }).catch((error: unknown) => { throw toAccessError(error); });
+        const post = async (path: string, body: unknown) => {
+            const result = await this.transport.post<{ code?: unknown } | undefined>(path, body, { idempotencyKey: true }).catch((error: unknown) => { throw toAccessError(error); });
+            // Un 202 que dice "no registrado" no es un éxito (servidores anteriores a D2 lo respondían así).
+            if (typeof result?.code === "string" && result.code.endsWith("_NOT_RECORDED")) {
+                throw new CustomyAccessError({ code: result.code, status: 202, message: "Flags events were accepted but not recorded; will retry", body: result });
+            }
+        };
         const [sentImpressions, sentConversions] = await Promise.allSettled([
             impressions.length ? post("/api/v1/flags/impressions", { impressions, sdk: SDK }) : Promise.resolve(),
             conversions.length ? post("/api/v1/flags/conversions", { conversions, sdk: SDK }) : Promise.resolve(),
         ]);
-        if (sentImpressions.status === "rejected") this.impressions.unshift(...impressions);
-        if (sentConversions.status === "rejected") this.conversions.unshift(...conversions);
+        const permanent = (result: PromiseSettledResult<void>) => result.status === "rejected" && result.reason instanceof CustomyAccessError
+            && result.reason.status !== undefined && PERMANENT_REJECTIONS.has(result.reason.status);
+        if (sentImpressions.status === "rejected" && !permanent(sentImpressions)) this.impressions.unshift(...impressions);
+        if (sentConversions.status === "rejected" && !permanent(sentConversions)) this.conversions.unshift(...conversions);
         const failed = [sentImpressions, sentConversions].find((result): result is PromiseRejectedResult => result.status === "rejected");
-        if (failed) throw failed.reason;
+        if (failed) {
+            this.flushFailures += 1;
+            const asked = failed.reason instanceof CustomyAccessError ? failed.reason.retryAfterMs ?? 0 : 0;
+            const backoff = Math.min(MAX_FLUSH_BACKOFF_MS, this.flushIntervalMs * 2 ** Math.min(this.flushFailures, 8)) * (0.75 + Math.random() * 0.5);
+            this.nextFlushAt = Date.now() + Math.max(asked, backoff);
+            throw failed.reason;
+        }
+        this.flushFailures = 0;
+        this.nextFlushAt = 0;
         return impressions.length + conversions.length;
     }
 }

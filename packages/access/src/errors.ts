@@ -17,7 +17,7 @@ export class CustomyAccessError extends CustomySdkError {
     }
 }
 
-const SCOPE_CODES = new Set(["SCOPE_REQUIRED", "INSUFFICIENT_SCOPE", "insufficient_scope", "SDK_MACHINE_TOKEN_INVALID_SCOPE"]);
+const SCOPE_CODES = new Set(["SCOPE_REQUIRED", "INSUFFICIENT_SCOPE", "insufficient_scope", "SDK_MACHINE_TOKEN_INVALID_SCOPE", "APPLICATION_SCOPE_REQUIRED"]);
 
 /**
  * Un fallo de scope de un método de la fachada, con un mensaje que nombra el

@@ -87,8 +87,34 @@ await customy.apps.deleted({ userId, erasure: true });
 - 5xx, 408, 429 y fallos de red se reintentan con backoff; 400/401/422 no. `batch([...])` envía varios con concurrencia limitada y devuelve un resultado por evento; `envelopes.*` construye el sobre sin enviarlo (para tu outbox) y `send(sobre)` lo envía.
 - Sin credenciales de Access: `createConnectedApp({ ... })` hace lo mismo por separado.
 
+### Consentimientos de tu app (`consentUpdated`)
+
+Lo que la persona decide en tu app (la casilla de ofertas del registro, el interruptor del perfil, un banner) va al registro de consentimientos de CRM, el sistema de registro de Customy; la contactabilidad lo refleja al momento. Sin esto, el marketing a tus usuarios queda bloqueado (`consent_missing`).
+
+```ts
+await customy.apps.consentUpdated({
+  userId,
+  consents: [
+    {
+      purpose: "marketing",            // vocabulario único: marketing, sales, education, event, survey, transactional, notification, security, support
+      channel: "email",                // email, push, web_push, whatsapp, sms, voice, in_app; "*" solo para negar o retirar
+      status: "granted",               // granted | denied | withdrawn
+      capturedAt: "2026-09-29T15:04:05.000Z", // cuándo lo decidió la persona
+      textVersion: "offers-2026-09",   // versión del texto mostrado (≤ 64, ASCII visible)
+      textHash: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", // opcional: sha256 hex del texto exacto
+      source: "signup",                // signup | profile | banner | import
+      legalBasis: "consent",
+    },
+  ],
+});
+```
+
+- 1 a 20 decisiones por evento; sin datos personales (solo ids). Un permiso nombra un propósito y un canal; `purpose: "*"` o `channel: "*"` solo valen para `denied`/`withdrawn` (p. ej. «no quiero nada»).
+- En el mismo evento, una negativa gana a un permiso; entre eventos manda `capturedAt` y una decisión más reciente nunca se pisa.
+- La clave es `<app>:user:consent_updated:<userId>:<huella de las decisiones>`: reenviar el mismo cambio se deduplica.
+
 ### In English
 
-`customy.people` manages CRM People: `identify` (find-or-create by identifiers, with roles), `get`, `list` (async iterator; `list.page` for one page), `assignRole` / `updateRole` / `endRole`, `linkIdentifier` / `listIdentifiers`, `setState`, `contactability` (explained decision per purpose and channel), `relationships.*`, `groups.*`, `roleTypes.list`, `applicationsUsersSummary`. Inputs are validated against the contract schemas before any request; it uses an Access M2M token for audience `customy-crm` with scopes `crm:people.read crm:people.write` (configurable via `people: { scopes, audience, baseUrl }`). `customy.apps` (or standalone `createConnectedApp`) emits `application.user.registered | activity | identity_updated | deleted` to Customy Events with the app's ingest key, deterministic idempotency keys and event ids, and retries on 5xx/network errors. `evaluateContactability` and the role catalog are exported too.
+`customy.people` manages CRM People: `identify` (find-or-create by identifiers, with roles), `get`, `list` (async iterator; `list.page` for one page), `assignRole` / `updateRole` / `endRole`, `linkIdentifier` / `listIdentifiers`, `setState`, `contactability` (explained decision per purpose and channel), `relationships.*`, `groups.*`, `roleTypes.list`, `applicationsUsersSummary`. Inputs are validated against the contract schemas before any request; it uses an Access M2M token for audience `customy-crm` with scopes `crm:people.read crm:people.write` (configurable via `people: { scopes, audience, baseUrl }`). `customy.apps` (or standalone `createConnectedApp`) emits `application.user.registered | activity | identity_updated | deleted | consent_updated` to Customy Events with the app's ingest key, deterministic idempotency keys and event ids, and retries on 5xx/network errors. `consentUpdated({ userId, consents })` records the app's own communication consents (purpose/channel from Customy's single consent vocabulary, `granted | denied | withdrawn`, `capturedAt`, `textVersion`, optional `textHash`, `source`, `legalBasis: "consent"`) in the CRM consent ledger, which contactability reads immediately. `evaluateContactability` and the role catalog are exported too.
 
 Sustituye a `@customyai/customy-sdk/server`: `createCustomy({ issuer, clientId, clientSecret })` y `product(clave)` tienen la misma forma; `billing.report(...)` pasa a `billing.usage.report(...)`, y `send`, `links` y `data` son los clientes de los paquetes nuevos (`createSend`, `createLinks`, `createData`).

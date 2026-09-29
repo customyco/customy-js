@@ -15,6 +15,8 @@ import type {
   ContentCardStatus,
   ContentCardTestResult,
   ConversionInput,
+  StoryConversion,
+  StoryConversionInput,
   InAppMessage,
   InAppMessageInput,
   InAppStats,
@@ -91,6 +93,7 @@ export const SEND_SCOPES = [
   "send:inbox:read", "send:inbox:manage",
   "send:in_app:read", "send:in_app:manage",
   "send:content_cards:read", "send:content_cards:manage",
+  "send:stories:convert",
 ] as const;
 export type SendScope = (typeof SEND_SCOPES)[number];
 
@@ -301,6 +304,15 @@ export function createSend(options: SendOptions) {
         get: () => call<NotificationSettings>("GET", "/api/notifications/settings"),
         put: (input: NotificationSettingsInput) => call<NotificationSettings>("PUT", "/api/notifications/settings", { body: input }),
       },
+    },
+
+    /**
+     * Customy Stories desde tu servidor. Hoy una sola llamada: reportar la compra con su importe, que es lo único que suma ingresos a una story
+     * (la app del usuario no puede: su señal de compra no lleva importe). Pide el alcance `stories:convert` (`send:stories:convert` en un token de máquina).
+     */
+    stories: {
+      /** La compra cerrada, con importe en unidad menor y moneda; idempotente por `event_id`. 503 `commerce_unavailable` si el puente con Commerce está apagado: reintenta. */
+      conversion: (input: StoryConversionInput, request?: IdempotentOptions) => created<StoryConversion>("/api/stories/conversions", input, request),
     },
 
     /** Las personas: zona horaria, idioma, horas de silencio y preferencias por tema y canal. */

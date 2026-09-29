@@ -1,5 +1,5 @@
 import { createMachineTokens, CustomySdkError } from "@customyai/core";
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { createFlagsClient, type CustomyFlagsSnapshot } from "./flags";
 import { ACCESS_OPERATIONS, createAccessApi, expandPath } from "./generated";
 import { ACCESS_SCOPES, capabilityFromSnapshot, createAccess, CustomyAccessError, type AccessMeSnapshot } from "./index";
@@ -101,8 +101,52 @@ describe("@customyai/access: fachada", () => {
         expect(new URLSearchParams(calls[0]!.body).get("audience")).toBe("customy-access");
         expect(calls[1]!.url).toBe(`${BASE}/api/admin/env/${ENV}/catalog/features`);
         expect(calls[1]!.headers.authorization ?? calls[1]!.headers.Authorization).toBe("Bearer tok");
-        expect([...ACCESS_SCOPES]).toEqual(["capabilities:read", "users:contact:read", "users:read", "catalog:read", "flags:read"]);
+        expect([...ACCESS_SCOPES]).toEqual([
+            "capabilities:read", "users:contact:read", "users:read", "catalog:read", "flags:read",
+            "app-relationships:read", "app-relationships:write", "app-plans:write",
+        ]);
+        expect(ACCESS_SCOPES).not.toContain("relationships:write");
         expect(ACCESS_SCOPES).not.toContain("admin:*");
+    });
+
+    it("relaciones, permisos y plan de la app: cada método con su scope, su verbo y su cuerpo", async () => {
+        const token = (scope: string) => json(200, { access_token: `tok:${scope}`, expires_in: 300 });
+        const tuple = { subjectType: "user", subjectId: "usr_1", relation: "owner", objectType: "fixture-app/fund", objectId: "fund_1" };
+        const { fetch, calls } = scripted([
+            token("app-relationships:write"), json(200, { written: 1, deleted: 0, consistencyToken: "3" }),
+            token("app-relationships:read"), json(200, { tuples: [tuple], truncated: false }),
+            json(200, { results: [{ allowed: true, via: "owner" }] }),
+            token("app-plans:write"), json(200, { userId: "usr_1", planCode: "premium", previousPlanCode: null }),
+        ]);
+        const machineTokens = createMachineTokens({ issuer: BASE, clientId: "app", clientSecret: "secret", fetch });
+        const access = createAccess({ baseUrl: BASE, machineTokens, environmentId: ENV, fetch });
+
+        await expect(access.relationships.write({ writes: [tuple] })).resolves.toEqual({ written: 1, deleted: 0, consistencyToken: "3" });
+        await expect(access.relationships.list({ objectType: "fixture-app/fund", objectId: "fund_1" })).resolves.toEqual({ tuples: [tuple], truncated: false });
+        await expect(access.permissions.checkMany([{ subject: { type: "user", id: "usr_1" }, permission: "loans.approve", object: { type: "fixture-app/fund", id: "fund_1" } }]))
+            .resolves.toEqual([{ allowed: true, via: "owner" }]);
+        await expect(access.plans.set("usr_1", "premium")).resolves.toEqual({ userId: "usr_1", planCode: "premium", previousPlanCode: null });
+
+        const tokens = calls.filter((call) => call.url.endsWith("/oauth/token")).map((call) => new URLSearchParams(call.body).get("scope"));
+        expect(tokens).toEqual(["app-relationships:write", "app-relationships:read", "app-plans:write"]);
+        const api = calls.filter((call) => !call.url.endsWith("/oauth/token"));
+        expect(api.map((call) => [call.method, call.url])).toEqual([
+            ["POST", `${BASE}/api/v1/env/${ENV}/app-relationships`],
+            ["GET", `${BASE}/api/v1/env/${ENV}/app-relationships?objectType=fixture-app%2Ffund&objectId=fund_1`],
+            ["POST", `${BASE}/api/v1/env/${ENV}/app-permissions/check`],
+            ["PUT", `${BASE}/api/v1/env/${ENV}/app-members/usr_1/plan`],
+        ]);
+        expect(JSON.parse(api[0]!.body!)).toEqual({ writes: [tuple], deletes: [] });
+        expect(JSON.parse(api[3]!.body!)).toEqual({ planCode: "premium" });
+        expect(api[1]!.headers.authorization ?? api[1]!.headers.Authorization).toBe("Bearer tok:app-relationships:read");
+    });
+
+    it("sin entorno, las rutas de la app lo piden; un scope que falta se nombra", async () => {
+        const { fetch } = scripted([json(403, { code: "APPLICATION_SCOPE_REQUIRED" })]);
+        const access = createAccess({ baseUrl: BASE, accessToken: "jwt.fixture.token", fetch });
+        await expect(access.plans.set("usr_1", null)).rejects.toMatchObject({ code: "SDK_ENVIRONMENT_REQUIRED" });
+        const error = await access.relationships.list({ objectType: "fixture-app/fund" }, { environmentId: ENV }).catch((caught: unknown) => caught);
+        expect(error).toMatchObject({ code: "APPLICATION_SCOPE_REQUIRED", status: 403, requiredScope: "app-relationships:read" });
     });
 
     it("un texto legible en `error` no se hace pasar por código; lecturas se reintentan ante 503", async () => {
@@ -179,5 +223,61 @@ describe("@customyai/access/flags", () => {
         const body = JSON.parse(calls[1]!.body!);
         expect(body.impressions).toHaveLength(1);
         expect(calls[1]!.headers.authorization).toBe("Bearer tok");
+    });
+
+    describe("entrega de impresiones y conversiones (D2)", () => {
+        const track = (flags: ReturnType<typeof createFlagsClient>) => flags.getTreatment("checkout.v2", { key: "usr_1" });
+
+        it("un 503 con Retry-After conserva el lote y reporta el retryAfterMs; el reintento manual lo reenvía entero", async () => {
+            const { fetch, calls } = scripted([json(503, { code: "FLAGS_IMPRESSIONS_NOT_RECORDED", retryable: true }, { "retry-after": "60" }), json(202, { code: "FLAGS_IMPRESSIONS_RECORDED" })]);
+            const flags = createFlagsClient({ baseUrl: BASE, accessToken: "tok", fetch, snapshot: snapshot(1), retry: false });
+            track(flags);
+            await expect(flags.flush()).rejects.toMatchObject({ code: "FLAGS_IMPRESSIONS_NOT_RECORDED", status: 503, retryAfterMs: 60_000 });
+            await expect(flags.flush()).resolves.toBe(1);
+            expect(JSON.parse(calls[1]!.body!).impressions).toEqual(JSON.parse(calls[0]!.body!).impressions);
+        });
+
+        it("un 202 *_NOT_RECORDED de un servidor antiguo no es éxito: el lote vuelve a la cola", async () => {
+            const { fetch } = scripted([json(202, { accepted: 0, code: "FLAGS_IMPRESSIONS_NOT_RECORDED" }), json(202, { code: "FLAGS_IMPRESSIONS_RECORDED" })]);
+            const flags = createFlagsClient({ baseUrl: BASE, accessToken: "tok", fetch, snapshot: snapshot(1), retry: false });
+            track(flags);
+            await expect(flags.flush()).rejects.toMatchObject({ code: "FLAGS_IMPRESSIONS_NOT_RECORDED", status: 202 });
+            await expect(flags.flush()).resolves.toBe(1);
+        });
+
+        it("un fallo de conversiones tampoco las descarta", async () => {
+            const { fetch, calls } = scripted([json(503, { code: "FLAGS_CONVERSIONS_NOT_RECORDED" }), json(202, { code: "FLAGS_CONVERSIONS_RECORDED" })]);
+            const flags = createFlagsClient({ baseUrl: BASE, accessToken: "tok", fetch, snapshot: snapshot(1), retry: false });
+            flags.trackConversion("checkout.v2", { key: "usr_1" }, { id: "c1", metric: "purchase", value: 5 });
+            await expect(flags.flush()).rejects.toMatchObject({ status: 503 });
+            await expect(flags.flush()).resolves.toBe(1);
+            expect(JSON.parse(calls[1]!.body!).conversions[0]).toMatchObject({ id: "c1", value: 5 });
+        });
+
+        it("el envío automático espera con backoff tras un fallo (y respeta Retry-After); no martillea al servidor", async () => {
+            vi.useFakeTimers();
+            try {
+                const { fetch, calls } = scripted([json(503, { code: "FLAGS_IMPRESSIONS_NOT_RECORDED" }, { "retry-after": "60" }), json(202, { code: "FLAGS_IMPRESSIONS_RECORDED" })]);
+                const flags = createFlagsClient({ baseUrl: BASE, accessToken: "tok", fetch, snapshot: snapshot(1), retry: false, flushIntervalMs: 1_000 });
+                track(flags);
+                flags.startAutoFlush();
+                await vi.advanceTimersByTimeAsync(1_000);
+                expect(calls).toHaveLength(1);
+                await vi.advanceTimersByTimeAsync(30_000); // dentro de los 60 s pedidos: ningún intento
+                expect(calls).toHaveLength(1);
+                await vi.advanceTimersByTimeAsync(40_000);
+                expect(calls).toHaveLength(2);
+                flags.stopAutoFlush();
+            } finally { vi.useRealTimers(); }
+        });
+
+        it("un 400 es un rechazo definitivo: el lote no se reencola", async () => {
+            const { fetch, calls } = scripted([json(400, { code: "FLAGS_IMPRESSIONS_INVALID" })]);
+            const flags = createFlagsClient({ baseUrl: BASE, accessToken: "tok", fetch, snapshot: snapshot(1), retry: false });
+            track(flags);
+            await expect(flags.flush()).rejects.toMatchObject({ status: 400 });
+            await expect(flags.flush()).resolves.toBe(0);
+            expect(calls).toHaveLength(1);
+        });
     });
 });

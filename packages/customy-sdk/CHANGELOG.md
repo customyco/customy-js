@@ -1,5 +1,76 @@
 # @customyai/customy-sdk
 
+## 0.5.5
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/customy-access@0.9.3
+
+## 0.5.4
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.13.0
+  - @customyai/send-sdk@1.6.3
+
+## 0.5.3
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.12.0
+
+## 0.5.2
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.11.0
+
+## 0.5.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/customy-access@0.9.1
+  - @customyai/sdk@0.10.1
+
+## 0.5.0
+
+### Minor Changes
+
+- Contrato del evaluador (D6): `EvaluationDetail` añade `reasonCode` (`default | off | killed | prerequisite_failed | rule:<id> | rollout | segment:<key> | error`) y `bucketBp` (0..9999). `reason` y `bucket` no cambian. Nuevos `createDependencies` (prerrequisitos con ciclo y profundidad máxima), `LEGACY_REASON_ALIASES` y tope de 512 caracteres para `regex`.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/customy-access@0.9.0
+  - @customyai/sdk@0.10.0
+
+## 0.4.10
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.9.0
+
+## 0.4.9
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.8.0
+
+## 0.4.8
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.7.0
+  - @customyai/customy-access@0.8.5
+
 ## 0.4.7
 
 ### Patch Changes
