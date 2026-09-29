@@ -19,6 +19,7 @@
  * await customy.send.emails.send({ templateId: "welcome", to: "ana@example.com", variables: { name: "Ana" } });
  * await customy.billing.usage.report([{ meter: "coach.runs", quantity: 1, idempotencyKey: "run-1" }]);
  * await customy.product("crm").get("/v1/contacts");
+ * const { person } = await customy.people.identify({ identifiers: [{ type: "email", value: "ana@example.com" }] });
  * ```
  *
  * Solo servidor: lleva el secreto de la app. Un bundle de navegador no lo
@@ -42,6 +43,8 @@ import { createBilling, type CustomyBilling } from "@customyai/billing";
 import { createData, type CustomyData, type DataOptions, type EventMap } from "@customyai/data";
 import { createLinks, type CustomyLinks } from "@customyai/links";
 import { createSend, type CustomySend } from "@customyai/send";
+import { createPeople, PEOPLE_AUDIENCE, PEOPLE_SCOPES, type CustomyPeople } from "./people";
+import { createConnectedApp, type ConnectedAppOptions, type CustomyConnectedApp } from "./apps";
 
 /** Tipos de la app (los de `customy apps codegen`): eventos, meters y capabilities declarados. */
 export type CustomyAppTypes = {
@@ -112,7 +115,23 @@ export type CreateCustomyOptions = Readonly<{
      * una etiqueta), nunca públicos. Lo recomendado es el nombre público https.
      */
     allowPrivateHttp?: boolean;
+    /** Personas del CRM (`customy.people`): audiencia, scopes y URL. */
+    people?: CustomyPeopleSettings;
+    /** Ciclo de vida de usuarios de la app conectada (`customy.apps`). Sin esto, `customy.apps` falla al usarse. */
+    apps?: CustomyAppsSettings;
 }>;
+
+export type CustomyPeopleSettings = Readonly<{
+    /** Audiencia de Access (por defecto la del CRM en el discovery, `customy-crm`). */
+    audience?: string;
+    /** Scopes M2M (por defecto `crm:people.read crm:people.write`; pide solo `crm:people.read` si la app solo lee). */
+    scopes?: readonly string[];
+    /** URL del CRM si el discovery no la publica. */
+    baseUrl?: string;
+}>;
+
+/** `createConnectedApp` sin lo que ya da `createCustomy` (`fetch`, `timeoutMs`, `retry`, http local). */
+export type CustomyAppsSettings = Omit<ConnectedAppOptions, "fetch" | "allowLoopbackHttp" | "allowPrivateHttp"> & Partial<Pick<ConnectedAppOptions, "fetch">>;
 
 export type Customy<App extends CustomyAppTypes = CustomyAppTypes> = Readonly<{
     platform: CustomyPlatformConfiguration;
@@ -127,6 +146,10 @@ export type Customy<App extends CustomyAppTypes = CustomyAppTypes> = Readonly<{
     readonly send: CustomySend;
     readonly billing: CustomyBilling<MetersOf<App>>;
     readonly links: CustomyLinks;
+    /** Personas y roles del CRM: identify, roles, identificadores, relaciones, grupos, contactabilidad. */
+    readonly people: CustomyPeople;
+    /** Eventos de ciclo de vida de usuarios de la app conectada (necesita `apps` en las opciones). */
+    readonly apps: CustomyConnectedApp;
 }>;
 
 /**
@@ -179,8 +202,123 @@ export async function createCustomy<App extends CustomyAppTypes = CustomyAppType
         get links() {
             return once("links", () => createLinks(connection("links")));
         },
+        get people() {
+            return once("people", () => {
+                const settings = options.people ?? {};
+                const scopes = settings.scopes ?? byProduct.crm ?? PEOPLE_SCOPES;
+                const baseUrl = settings.baseUrl ?? platform.products.crm?.baseUrl;
+                if (!baseUrl) throw new CustomySdkError({ code: "SDK_PRODUCT_NOT_DISCOVERED", service: "crm", message: "Product crm is not in the platform discovery; pass people.baseUrl" });
+                const audience = settings.audience ?? platform.products.crm?.audience ?? PEOPLE_AUDIENCE;
+                const { machineTokens: _tokens, ...rest } = connection("crm");
+                return createPeople({ ...rest, baseUrl, scopes, accessToken: machineTokens.forAudience(audience, scopes) });
+            });
+        },
+        get apps() {
+            return once("apps", () => {
+                if (!options.apps) throw new CustomySdkError({ code: "SDK_APPS_NOT_CONFIGURED", service: "events", message: "customy.apps needs the `apps` option (applicationKey, ingestKey, organizationId, projectId, environment, accessEnvironmentId)" });
+                return createConnectedApp({
+                    fetch: options.fetch, retry: options.retry, allowLoopbackHttp: options.allowLoopbackHttp, allowPrivateHttp: options.allowPrivateHttp,
+                    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+                    ...options.apps,
+                });
+            });
+        },
     };
 }
 
 export type { CustomyPlatformConfiguration, MachineTokenProvider, MachineTokens, Transport } from "@customyai/core";
 export { CustomySdkError, isCustomySdkError } from "@customyai/core";
+
+export {
+    createPeople,
+    PEOPLE_AUDIENCE,
+    PEOPLE_SCOPES,
+    type AddPersonGroupMembersParams,
+    type AssignPersonRoleParams,
+    type ContactabilityParams,
+    type ContactabilityView,
+    type CreatePersonGroupParams,
+    type CreateRelationshipParams,
+    type CustomyPeople,
+    type EndPersonRoleParams,
+    type EndRelationshipParams,
+    type IdentifyPersonParams,
+    type IdentifyPersonResult,
+    type LinkPersonIdentifierParams,
+    type ListPeopleParams,
+    type ListPersonGroupsParams,
+    type ListRelationshipsParams,
+    type PeopleOptions,
+    type PeoplePage,
+    type PeopleScope,
+    type PersonDetailView,
+    type PersonGroupView,
+    type PersonIdentifierView,
+    type RelationshipView,
+    type RoleTypeView,
+    type SetPersonStateParams,
+    type UpdatePersonRoleParams,
+} from "./people";
+export {
+    APPLICATION_USER_EVENT_TYPES,
+    createConnectedApp,
+    deterministicUuid,
+    EVENTS_URLS,
+    type ApplicationUserEventEnvelope,
+    type ApplicationUserEventType,
+    type ApplicationUserPayload,
+    type BatchItem,
+    type BatchResult,
+    type ConnectedAppEnvironment,
+    type ConnectedAppOptions,
+    type CustomyConnectedApp,
+    type IngestReceipt,
+    type UserActivityInput,
+    type UserDeletedInput,
+    type UserIdentityUpdatedInput,
+    type UserRegisteredInput,
+} from "./apps";
+// Catálogo y reglas puras del modelo de Personas (contrato empaquetado en el build).
+export {
+    APP_USAGE_STAGES,
+    COMMERCIAL_STAGES,
+    DEFAULT_ROLE_PACKS,
+    DIGITAL_CONSENT_AGE,
+    evaluateContactability,
+    getPlatformRoleType,
+    getRelationshipType,
+    IDENTIFIER_PRIORITY,
+    isMinorFor,
+    MESSAGE_PURPOSES,
+    PERSON_GROUP_KINDS,
+    PERSON_IDENTIFIER_TYPES,
+    PERSON_ROLE_CONTEXT_KINDS,
+    PERSON_ROLE_FAMILIES,
+    PERSON_ROLE_STATUSES,
+    PERSON_STATES,
+    platformRoleTypesForPacks,
+    RELATIONSHIP_TYPE_CATALOG,
+    ROLE_PACKS,
+    ROLE_TYPE_CATALOG,
+    type ApplicationUsersSummary,
+    type ConnectedApplicationUserIdentity,
+    type ConsentSignal,
+    type ContactabilityDecision,
+    type ContactabilityInput,
+    type ContactabilityReason,
+    type LegalBasis,
+    type LocalizedLabel,
+    type MessagePurpose,
+    type PersonGroupKind,
+    type PersonIdentifierType,
+    type PersonRoleContextKind,
+    type PersonRoleFamily,
+    type PersonRoleStatus,
+    type PersonRoleView,
+    type PersonState,
+    type PersonSummaryView,
+    type RelationshipTypeDefinition,
+    type RoleMarketingPolicy,
+    type RolePack,
+    type RoleTypeDefinition,
+} from "./vendor/people";

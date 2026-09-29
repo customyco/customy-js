@@ -133,6 +133,38 @@ describe("@customyai/send", () => {
     expect(JSON.parse(calls[0]!.body!)).toEqual({ recall: true });
   });
 
+  it("plan, alcance y envío a una audiencia con la decisión; 409 plan_required trae el plan en `body`", async () => {
+    const plan = { object: "notification_plan", plan_hash: "pln_abc12345", decision: "partial", options: [{ id: "respect_quiet_hours" }] };
+    const { fetch, calls } = scripted([
+      json(200, plan),
+      json(200, { object: "notification_estimate", recipients: 10 }),
+      json(200, { object: "in_app_estimate", eligible: 4 }),
+      json(200, { object: "in_app_plan", decision: "blocked" }),
+      json(409, { statusCode: 409, name: "plan_required", message: "look at the plan first", plan }),
+      json(202, { object: "notification", id: "ntf_9", test: false }),
+    ]);
+    const send = createSend({ baseUrl: BASE, accessToken: "cs_test_x", fetch, retry: { maxRetries: 0 } });
+    const audience = { filters: [{ field: "platform" as const, op: "eq" as const, value: "ios" }] };
+    expect((await send.notifications.plan({ audience, channels: ["push"] })).plan_hash).toBe("pln_abc12345");
+    expect((await send.notifications.estimate({ audience })).recipients).toBe(10);
+    expect((await send.inApp.estimate({ audience, platforms: ["ios"] })).eligible).toBe(4);
+    expect((await send.inApp.plan({ subject: "content_card", id: "cc_1" })).decision).toBe("blocked");
+    const refused = await send.notifications.send({ audience, title: "Hola" }).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(CustomySendError);
+    expect((refused as CustomySendError).code).toBe("plan_required");
+    expect(((refused as CustomySendError).body as { plan: { plan_hash: string } }).plan.plan_hash).toBe("pln_abc12345");
+    await send.notifications.send({ audience, title: "Hola", delivery: { decision: { option: "respect_quiet_hours", plan_hash: "pln_abc12345" } } }, { idempotencyKey: "launch-1" });
+    expect(calls.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
+      "POST /api/notifications/plan",
+      "POST /api/notifications/estimate",
+      "POST /api/in-app/estimate",
+      "POST /api/in-app/plan",
+      "POST /api/notifications",
+      "POST /api/notifications",
+    ]);
+    expect(JSON.parse(calls[5]!.body!)).toMatchObject({ audience, delivery: { decision: { option: "respect_quiet_hours", plan_hash: "pln_abc12345" } } });
+  });
+
   it("manda Customy-Version en cada petición (una cabecera propia la sustituye)", async () => {
     const { fetch, calls } = scripted([json(200, { data: [] }), json(200, { data: [] })]);
     const send = createSend({ baseUrl: BASE, accessToken: "cs_test_x", fetch });

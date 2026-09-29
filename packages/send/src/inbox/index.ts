@@ -50,7 +50,7 @@ import { matchesFilters } from "./filters";
 export { CustomySendError } from "../errors";
 export { actionCategoryId, type ActionCategoryInput } from "../actions";
 export { matchesFilter, matchesFilters, type FilterCondition } from "./filters";
-export { BRIDGE_SCRIPT, buildHtmlDocument, HTML_CSP, isSafeBridgeUrl, parseBridgeMessage, type BridgeMessage, type BridgeMessageType } from "./bridge";
+export { BRIDGE_SCRIPT, buildHtmlDocument, clampHtmlHeight, HTML_CSP, HTML_LAYOUTS, HTML_LAYOUTS_FEATURE, isSafeBridgeUrl, parseBridgeMessage, safeAreaStyle, type BridgeMessage, type BridgeMessageType, type HtmlDocumentOptions, type SafeAreaInsets } from "./bridge";
 export { createInAppPresenter, type InAppPresenter, type InAppPresenterClient, type InAppPresenterOptions } from "./presenter";
 export type {
   ChannelPreference,
@@ -104,6 +104,10 @@ const LEGACY_LAYOUTS: readonly InAppLayout[] = ["modal", "banner", "fullscreen",
 /**
  * Lo que declara una app que pinta todo: los 7 diseños, los 7 bloques y las
  * funciones `variables`, `content_cards`, `bridge_v1` y `push_primer`.
+ * `html_layouts` (HTML dentro de modal, pantalla completa, banner, tarjeta y
+ * slideup) NO va aquí: se declara solo si la app lo pinta de verdad
+ * (`features: [...DEFAULT_CAPABILITIES.features, HTML_LAYOUTS_FEATURE]`); sin
+ * ella Send manda el `fallback` nativo de esos mensajes.
  *
  *   createInboxClient({ token, platform: "ios", capabilities: { ...DEFAULT_CAPABILITIES, app_version: "1.4.2" } });
  */
@@ -631,8 +635,11 @@ export function createInboxClient(options: InboxClientOptions) {
   /** Encola recibos; salen en lotes. Cada uno lleva un id estable: reintentar no duplica. */
   function trackEvents(events: ClientEvent | ClientEvent[]) {
     const list = Array.isArray(events) ? events : [events];
+    // Dónde pasó (el `by_platform` de las métricas): la plataforma de la app salvo que el evento diga otra.
+    const appPlatform = capabilities?.platform ?? options.platform;
     for (const event of list) {
-      queue.push({ ...event, id: event.id ?? randomId("evt"), occurred_at: event.occurred_at ?? new Date().toISOString() });
+      const platform = event.platform ?? appPlatform;
+      queue.push({ ...event, id: event.id ?? randomId("evt"), occurred_at: event.occurred_at ?? new Date().toISOString(), ...(platform ? { platform } : {}) });
     }
     if (queue.length > maxQueue) queue = queue.slice(queue.length - maxQueue);
     if (queue.length >= maxBatch) void flush();
@@ -684,7 +691,7 @@ export function createInboxClient(options: InboxClientOptions) {
   function visibleInApp(): EligibleInAppMessage[] {
     const kill = state.config?.kill;
     if (kill?.in_app) return [];
-    return rawInApp.filter((m) => !closedInApp.has(m.id) && !(kill?.html && m.layout === "html"));
+    return rawInApp.filter((m) => !closedInApp.has(m.id) && !(kill?.html && (m.layout === "html" || Boolean(m.content?.html))));
   }
   function visibleCards(): EligibleContentCard[] {
     if (state.config?.kill.content_cards) return [];

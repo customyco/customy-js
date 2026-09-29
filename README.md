@@ -19,7 +19,7 @@ Official JavaScript and TypeScript SDKs for the Customy platform.
 | [`@customyai/send`](./packages/send) | Customy Send: email, templates, domains, webhooks, suppressions, notifications, push and in-app messages for servers, over @customyai/core (typed errors, retries with Retry-After, idempotency, Access machine tokens); ./inbox and ./inbox/react for end-user apps with a subscriber token. |
 | [`@customyai/billing`](./packages/billing) | Customy Billing for apps: report usage of the meters an app declares, with its Access identity, over @customyai/core. |
 | [`@customyai/links`](./packages/links) | Customy Links: short links, analytics, conversions, domains and webhooks, over @customyai/core (typed errors, retries with Retry-After, pagination, Access machine tokens). |
-| [`@customyai/sdk`](./packages/sdk) | The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing and Links (plus any discovered product) from their own packages. Server only. |
+| [`@customyai/sdk`](./packages/sdk) | The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing, Links and CRM People (plus any discovered product), and emits connected-app user lifecycle events from their own packages. Server only. |
 | [`@customyai/cli`](./packages/cli) | Customy CLI for apps: validate, type and sync customy.app.json (customy apps validate | codegen | sync). Also usable as a library. |
 
 ## Security

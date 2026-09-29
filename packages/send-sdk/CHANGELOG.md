@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.6.2
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/send@0.6.0
+
+## 1.6.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/send@0.5.0
+
+## 1.6.0
+
+### Minor Changes
+
+- HTML en todos los diseños (contrato in-app v2 §9; todo aditivo y opcional).
+
+  - `content.html` vale con modal, fullscreen, banner, card y slideup (con tooltip Send responde `422 html_not_allowed_in_tooltip`); `layout: "html"` sigue siendo modal + HTML. Precedencia: html > blocks > título/cuerpo.
+  - Nueva función de cliente `html_layouts` (`ClientFeature`, constante `HTML_LAYOUTS_FEATURE`): declárala solo si tu app pinta HTML en esos diseños; `DEFAULT_CAPABILITIES` no la incluye. Sin ella Send manda el `fallback` nativo en el mismo diseño (`rendered_as: "fallback"`).
+  - `buildHtmlDocument(html, { safeArea, viewportHeight })` inyecta `--customy-safe-top|-bottom|-left|-right` y `--customy-viewport-height` en `:root` antes del código del autor (`safeAreaStyle` para hacerlo a mano); `HTML_LAYOUTS`; `clampHtmlHeight(layout, alto, pantalla)` aplica los topes (40 % banner/slideup, 80 % card/modal; fullscreen lo decide el anfitrión).
+  - `BRIDGE_SCRIPT` informa solo el alto del contenido (caja de `<body>` más márgenes) al cargar y cada vez que cambia (ResizeObserver) con `resize`; `customy.resize(h)` sigue disponible.
+  - El interruptor `kill.html` de la configuración remota oculta también los mensajes con `content.html` en otros diseños.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/send@0.4.0
+
 ## 1.5.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@customyai/customy-sdk",
-  "version": "0.4.2",
+  "version": "0.4.7",
   "description": "Deprecated: use @customyai/sdk. Adapter of the Customy umbrella SDK (createCustomy, portfolio clients) kept for one major cycle.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -69,10 +69,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/customy-access": "^0.8.3",
+    "@customyai/customy-access": "^0.8.4",
     "@customyai/links-sdk": "^0.3.1",
-    "@customyai/sdk": "^0.4.0",
-    "@customyai/send-sdk": "^1.5.1"
+    "@customyai/sdk": "^0.6.0",
+    "@customyai/send-sdk": "^1.6.2"
   },
   "devDependencies": {
     "typescript": "^5.5.0",

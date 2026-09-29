@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.4
+
+### Patch Changes
+
+- `createApiKey` acepta `reason`: obligatorio (≥ 10 caracteres) solo cuando el secreto de administración emite una clave que excede el manifiesto `app/v1` del entorno; queda en la auditoría.
+
 ## 0.8.3
 
 ### Patch Changes
