@@ -1,5 +1,11 @@
 # @customyai/access
 
+## 0.7.0
+
+### Minor Changes
+
+- Roles y permisos de la app sin escribir ni un nombre de rol. Nuevo: `appRoles.list()` (los roles que declara el manifiesto, con sus permisos), `appRoles.assignments.list({ userId })`, `appRoles.assignments.assign({ userId, roleKey, expiresAt })` y `.revoke({ userId, roleKey })`, y `permissions.effective(userId)`, que devuelve los roles vigentes de un usuario y la unión de sus permisos ya resueltos contra el manifiesto (un rol caducado o que ya no existe no cuenta). Scopes nuevos `app-roles:read` y `app-roles:write`, que se piden solos con `machineTokens`. Lo que asignó el Workspace no se pisa: el servidor responde `ASSIGNMENT_MANAGED_BY_WORKSPACE`. `ACCESS_SCOPES` gana dos entradas.
+
 ## 0.6.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@customyai/sdk",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing, Links, Provisioning and CRM People (plus any discovered product), and emits connected-app user lifecycle events from their own packages. Server only.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -57,12 +57,194 @@
         "default": "./dist/testing.cjs"
       }
     },
+    "./client": {
+      "import": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.mjs"
+      },
+      "require": {
+        "types": "./dist/client.d.cts",
+        "default": "./dist/client.cjs"
+      }
+    },
+    "./client/react": {
+      "import": {
+        "types": "./dist/client-react.d.ts",
+        "default": "./dist/client-react.mjs"
+      },
+      "require": {
+        "types": "./dist/client-react.d.cts",
+        "default": "./dist/client-react.cjs"
+      }
+    },
+    "./native": {
+      "import": {
+        "types": "./dist/native.d.ts",
+        "default": "./dist/native.mjs"
+      },
+      "require": {
+        "types": "./dist/native.d.cts",
+        "default": "./dist/native.cjs"
+      }
+    },
+    "./native/react": {
+      "import": {
+        "types": "./dist/native-react.d.ts",
+        "default": "./dist/native-react.mjs"
+      },
+      "require": {
+        "types": "./dist/native-react.d.cts",
+        "default": "./dist/native-react.cjs"
+      }
+    },
+    "./web": {
+      "import": {
+        "types": "./dist/web.d.ts",
+        "default": "./dist/web.mjs"
+      },
+      "require": {
+        "types": "./dist/web.d.cts",
+        "default": "./dist/web.cjs"
+      }
+    },
+    "./server": {
+      "import": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.mjs"
+      },
+      "require": {
+        "types": "./dist/server.d.cts",
+        "default": "./dist/server.cjs"
+      }
+    },
+    "./flags": {
+      "import": {
+        "types": "./dist/flags.d.ts",
+        "default": "./dist/flags.mjs"
+      },
+      "require": {
+        "types": "./dist/flags.d.cts",
+        "default": "./dist/flags.cjs"
+      }
+    },
+    "./flags/edge": {
+      "import": {
+        "types": "./dist/flags-edge.d.ts",
+        "default": "./dist/flags-edge.mjs"
+      },
+      "require": {
+        "types": "./dist/flags-edge.d.cts",
+        "default": "./dist/flags-edge.cjs"
+      }
+    },
+    "./flags/react": {
+      "import": {
+        "types": "./dist/flags-react.d.ts",
+        "default": "./dist/flags-react.mjs"
+      },
+      "require": {
+        "types": "./dist/flags-react.d.cts",
+        "default": "./dist/flags-react.cjs"
+      }
+    },
+    "./openfeature": {
+      "import": {
+        "types": "./dist/openfeature.d.ts",
+        "default": "./dist/openfeature.mjs"
+      },
+      "require": {
+        "types": "./dist/openfeature.d.cts",
+        "default": "./dist/openfeature.cjs"
+      }
+    },
+    "./openfeature/web": {
+      "import": {
+        "types": "./dist/openfeature-web.d.ts",
+        "default": "./dist/openfeature-web.mjs"
+      },
+      "require": {
+        "types": "./dist/openfeature-web.d.cts",
+        "default": "./dist/openfeature-web.cjs"
+      }
+    },
+    "./provisioning": {
+      "import": {
+        "types": "./dist/provisioning.d.ts",
+        "default": "./dist/provisioning.mjs"
+      },
+      "require": {
+        "types": "./dist/provisioning.d.cts",
+        "default": "./dist/provisioning.cjs"
+      }
+    },
+    "./access": {
+      "import": {
+        "types": "./dist/access.d.ts",
+        "default": "./dist/access.mjs"
+      },
+      "require": {
+        "types": "./dist/access.d.cts",
+        "default": "./dist/access.cjs"
+      }
+    },
+    "./core": {
+      "import": {
+        "types": "./dist/core.d.ts",
+        "default": "./dist/core.mjs"
+      },
+      "require": {
+        "types": "./dist/core.d.cts",
+        "default": "./dist/core.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
     "*": {
       "testing": [
         "./dist/testing.d.ts"
+      ],
+      "client": [
+        "./dist/client.d.ts"
+      ],
+      "client/react": [
+        "./dist/client-react.d.ts"
+      ],
+      "native": [
+        "./dist/native.d.ts"
+      ],
+      "native/react": [
+        "./dist/native-react.d.ts"
+      ],
+      "web": [
+        "./dist/web.d.ts"
+      ],
+      "server": [
+        "./dist/server.d.ts"
+      ],
+      "flags": [
+        "./dist/flags.d.ts"
+      ],
+      "flags/edge": [
+        "./dist/flags-edge.d.ts"
+      ],
+      "flags/react": [
+        "./dist/flags-react.d.ts"
+      ],
+      "openfeature": [
+        "./dist/openfeature.d.ts"
+      ],
+      "openfeature/web": [
+        "./dist/openfeature-web.d.ts"
+      ],
+      "provisioning": [
+        "./dist/provisioning.d.ts"
+      ],
+      "access": [
+        "./dist/access.d.ts"
+      ],
+      "core": [
+        "./dist/core.d.ts"
       ]
     }
   },
@@ -81,14 +263,26 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/access": "^0.6.0",
+    "@customyai/access": "^0.7.0",
     "@customyai/billing": "^0.1.1",
+    "@customyai/client": "^0.3.0",
     "@customyai/core": "^0.2.0",
     "@customyai/data": "^0.2.0",
     "@customyai/links": "^0.1.1",
+    "@customyai/openfeature-provider": "^0.1.1",
     "@customyai/provisioning": "^0.1.0",
     "@customyai/send": "^0.7.0",
+    "@customyai/server": "^0.4.0",
+    "@customyai/web": "^0.2.2",
     "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "typescript": "^5.5.0",

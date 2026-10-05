@@ -7,6 +7,11 @@ import { accessCall, CustomyAccessError, withRequiredScope } from "./errors";
 import { ACCESS_AUDIENCE, ACCESS_DEFAULT_BASE_URL, type AccessOptions, type AccessScope } from "./options";
 import type {
     AccessCatalog,
+    AppEffectivePermissions,
+    AppRole,
+    AppRoleAssignInput,
+    AppRoleAssignResult,
+    AppRoleAssignment,
     AccessMeSnapshot,
     MemberPlanResult,
     PermissionCheckInput,
@@ -24,6 +29,14 @@ import type {
     UserContact,
     UserSummary,
 } from "./types";
+
+/** `expiresAt` llega como epoch en milisegundos o como fecha ISO; sin valor, no caduca. */
+function isExpired(expiresAt: string | number | null | undefined, now: number): boolean {
+    if (expiresAt === null || expiresAt === undefined) return false;
+    const at = typeof expiresAt === "number" ? expiresAt : Date.parse(expiresAt);
+    return Number.isFinite(at) && at <= now;
+}
+
 
 const enc = encodeURIComponent;
 
@@ -176,10 +189,47 @@ function buildAccess<Capability extends string>(options: AccessOptions) {
         },
 
         permissions: {
+            /**
+             * Los roles de un usuario y los permisos que le dan, resueltos contra el manifiesto: lo que la app necesita para decidir
+             * «¿puede hacer X?» sin escribir ni un nombre de rol. Dos lecturas en paralelo. Scope `app-roles:read`.
+             */
+            effective: async (userId: string, params: Scope = {}): Promise<AppEffectivePermissions> => {
+                const [roles, assignments] = await Promise.all([
+                    send<{ roles: AppRole[] }>("GET", "permissions.effective", "app-roles:read", runtime(params.environmentId, "/app-roles"), undefined, params).then((response) => response.roles),
+                    send<{ assignments: AppRoleAssignment[] }>("GET", "permissions.effective", "app-roles:read", runtime(params.environmentId, "/app-role-assignments"), { userId }, params).then((response) => response.assignments),
+                ]);
+                const now = Date.now();
+                const held = new Set(assignments.filter((a) => a.userId === userId && !isExpired(a.expiresAt, now)).map((a) => a.roleKey));
+                const granted = roles.filter((role) => held.has(role.key));
+                return { userId, roles: granted.map((role) => role.key).sort(), permissions: [...new Set(granted.flatMap((role) => role.permissions))].sort() };
+            },
             /** Hasta 100 comprobaciones en una petición, en el mismo orden. Scope `app-relationships:read`. */
             checkMany: (checks: readonly PermissionCheckInput[], params: Scope = {}) =>
                 send<{ results: PermissionCheckResult[] }>("POST", "permissions.checkMany", "app-relationships:read", runtime(params.environmentId, "/app-permissions/check"), undefined, params, { checks })
                     .then((response) => response.results),
+        },
+
+        /**
+         * Los roles de la propia app (`roles[]` del manifiesto): ver cuáles hay, a quién se asignaron, y asignar o quitar los que la app puede
+         * gestionar. Nunca roles de plataforma ni del Workspace, y lo que asignó el Workspace no se pisa (`ASSIGNMENT_MANAGED_BY_WORKSPACE`).
+         */
+        appRoles: {
+            /** Los roles que declara el manifiesto publicado, con sus permisos. Scope `app-roles:read`. */
+            list: (params: Scope = {}) =>
+                send<{ roles: AppRole[] }>("GET", "appRoles.list", "app-roles:read", runtime(params.environmentId, "/app-roles"), undefined, params).then((response) => response.roles),
+            assignments: {
+                /** Asignaciones vigentes de roles de la app; con `userId`, solo las de ese usuario. Scope `app-roles:read`. */
+                list: (query: { userId?: string } = {}, params: Scope = {}) =>
+                    send<{ assignments: AppRoleAssignment[] }>("GET", "appRoles.assignments.list", "app-roles:read", runtime(params.environmentId, "/app-role-assignments"),
+                        query.userId === undefined ? undefined : { userId: query.userId }, params).then((response) => response.assignments),
+                /** Asigna un rol de la app a un miembro del entorno. Idempotente. Scope `app-roles:write`. */
+                assign: (input: AppRoleAssignInput, params: Scope = {}) =>
+                    send<AppRoleAssignResult>("PUT", "appRoles.assignments.assign", "app-roles:write", runtime(params.environmentId, "/app-role-assignments"), undefined, params, input),
+                /** Quita un rol que la propia app había asignado. Scope `app-roles:write`. */
+                revoke: (input: { userId: string; roleKey: string }, params: Scope = {}) =>
+                    send<{ success: boolean }>("DELETE", "appRoles.assignments.revoke", "app-roles:write", runtime(params.environmentId, "/app-role-assignments"),
+                        { userId: input.userId, roleKey: input.roleKey }, params),
+            },
         },
 
         plans: {

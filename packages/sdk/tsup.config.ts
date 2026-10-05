@@ -16,5 +16,5 @@ const shared = {
 // Dos configuraciones sobre el mismo outDir: ninguna limpia (el script build
 // borra dist antes), para no pisar las salidas de la otra.
 export default defineConfig([
-    { ...shared, entry: {"index":"src/index.ts","testing":"src/testing.ts"}, clean: false },
+    { ...shared, entry: {"index":"src/index.ts","testing":"src/testing.ts","client":"src/client.ts","client-react":"src/client-react.ts","native":"src/native.ts","native-react":"src/native-react.ts","web":"src/web.ts","server":"src/server.ts","flags":"src/flags.ts","flags-edge":"src/flags-edge.ts","flags-react":"src/flags-react.ts","openfeature":"src/openfeature.ts","openfeature-web":"src/openfeature-web.ts","provisioning":"src/provisioning.ts","access":"src/access.ts","core":"src/core.ts"}, clean: false },
 ]);

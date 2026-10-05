@@ -128,7 +128,7 @@ importers:
   packages/customy-access:
     dependencies:
       '@customyai/access':
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../access
       '@customyai/client':
         specifier: ^0.3.0
@@ -174,13 +174,13 @@ importers:
   packages/customy-sdk:
     dependencies:
       '@customyai/customy-access':
-        specifier: ^0.9.4
+        specifier: ^0.9.5
         version: link:../customy-access
       '@customyai/links-sdk':
         specifier: ^0.3.1
         version: link:../links-sdk
       '@customyai/sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../sdk
       '@customyai/send-sdk':
         specifier: ^1.6.3
@@ -268,7 +268,7 @@ importers:
   packages/openfeature-provider:
     dependencies:
       '@customyai/access':
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../access
     devDependencies:
       tsup:
@@ -303,11 +303,14 @@ importers:
   packages/sdk:
     dependencies:
       '@customyai/access':
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../access
       '@customyai/billing':
         specifier: ^0.1.1
         version: link:../billing
+      '@customyai/client':
+        specifier: ^0.3.0
+        version: link:../client
       '@customyai/core':
         specifier: ^0.2.0
         version: link:../core
@@ -317,12 +320,24 @@ importers:
       '@customyai/links':
         specifier: ^0.1.1
         version: link:../links
+      '@customyai/openfeature-provider':
+        specifier: ^0.1.1
+        version: link:../openfeature-provider
       '@customyai/provisioning':
         specifier: ^0.1.0
         version: link:../provisioning
       '@customyai/send':
         specifier: ^0.7.0
         version: link:../send
+      '@customyai/server':
+        specifier: ^0.4.0
+        version: link:../server
+      '@customyai/web':
+        specifier: ^0.2.2
+        version: link:../web
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -539,7 +554,7 @@ importers:
         version: 8.20.0
     devDependencies:
       '@customyai/customy-sdk':
-        specifier: ^0.5.6
+        specifier: ^0.5.7
         version: link:../customy-sdk
       '@types/node':
         specifier: ^20.14.2
