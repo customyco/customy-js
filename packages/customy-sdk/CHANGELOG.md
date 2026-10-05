@@ -1,5 +1,12 @@
 # @customyai/customy-sdk
 
+## 0.5.6
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/customy-access@0.9.4
+
 ## 0.5.5
 
 ### Patch Changes

@@ -155,8 +155,10 @@ if (!bootstrap.canUseCapability("agent.execute")) {
 
 **Available clients:** `hierarchy` · `connections` · `users` · `sessions` · `roles` · `policies` · `audit` · `bruteForce` · `impersonation` · `webhooks` · `mfa` · `branding` · `delegations` · `relationships` · `gdpr` · `accountLinking` · `tokenExchange` · `pushMfa` · `rateLimits` · `emailConfig` · `scim` · `m2m` · `logStreams` · `devices` · `organizations` · `health` · `capabilities`
 
-Server-side product integrations can request an explicit token audience with
-`m2m.getToken({ clientId, clientSecret, scopes, audience: "customy-content" })`.
+Server-side product integrations request a signed machine JWT for a product with
+`m2m.getMachineToken({ clientId, clientSecret, audience: "customy-content", scopes })`.
+Products verify it against Access's JWKS. (`m2m.getToken` is deprecated: it
+returns an opaque token that Billing, Send and Data reject.)
 Access still enforces the service key's allowed audiences and scopes. Keep the
 credentials and token on the server; omitting `audience` preserves Access's
 existing default and does not grant access to another product.

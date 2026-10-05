@@ -1,0 +1,328 @@
+{
+  "name": "@customyai/stories-render",
+  "version": "0.2.0",
+  "description": "Customy Stories renderer: headless core (state machine, ordering, seen state, preload, gestures, layout) plus light web and React components for story bars, story viewers and banners, and an optional module with the interactive components (quiz, reactions, rating, open question, actions, commerce).",
+  "license": "MIT",
+  "author": "Customy <hello@customy.ai>",
+  "homepage": "https://docs.customy.ai/sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/customyco/customy-js.git",
+    "directory": "packages/stories-render"
+  },
+  "bugs": {
+    "url": "https://github.com/customyco/customy-js/issues"
+  },
+  "keywords": [
+    "customy",
+    "stories",
+    "banners",
+    "react",
+    "web",
+    "headless"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./dom": {
+      "import": {
+        "types": "./dist/dom/index.d.ts",
+        "default": "./dist/dom/index.mjs"
+      },
+      "require": {
+        "types": "./dist/dom/index.d.cts",
+        "default": "./dist/dom/index.cjs"
+      }
+    },
+    "./components": {
+      "import": {
+        "types": "./dist/dom/components.d.ts",
+        "default": "./dist/dom/components.mjs"
+      },
+      "require": {
+        "types": "./dist/dom/components.d.cts",
+        "default": "./dist/dom/components.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.mjs"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      }
+    },
+    "./lottie": {
+      "import": {
+        "types": "./dist/lottie/index.d.ts",
+        "default": "./dist/lottie/index.mjs"
+      },
+      "require": {
+        "types": "./dist/lottie/index.d.cts",
+        "default": "./dist/lottie/index.cjs"
+      }
+    },
+    "./video": {
+      "import": {
+        "types": "./dist/video/index.d.ts",
+        "default": "./dist/video/index.mjs"
+      },
+      "require": {
+        "types": "./dist/video/index.d.cts",
+        "default": "./dist/video/index.cjs"
+      }
+    },
+    "./client": {
+      "import": {
+        "types": "./dist/client/index.d.ts",
+        "default": "./dist/client/index.mjs"
+      },
+      "require": {
+        "types": "./dist/client/index.d.cts",
+        "default": "./dist/client/index.cjs"
+      }
+    },
+    "./client/react": {
+      "import": {
+        "types": "./dist/client/react.d.ts",
+        "default": "./dist/client/react.mjs"
+      },
+      "require": {
+        "types": "./dist/client/react.d.cts",
+        "default": "./dist/client/react.cjs"
+      }
+    },
+    "./styles.css": "./dist/styles.css",
+    "./widgets/canvas": {
+      "import": {
+        "types": "./dist/widgets/canvas.d.ts",
+        "default": "./dist/widgets/canvas.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/canvas.d.cts",
+        "default": "./dist/widgets/canvas.cjs"
+      }
+    },
+    "./widgets/react": {
+      "import": {
+        "types": "./dist/widgets/react.d.ts",
+        "default": "./dist/widgets/react.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/react.d.cts",
+        "default": "./dist/widgets/react.cjs"
+      }
+    },
+    "./widgets.css": "./dist/widgets.css",
+    "./widgets/inline": {
+      "import": {
+        "types": "./dist/widgets/inline.d.ts",
+        "default": "./dist/widgets/inline.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/inline.d.cts",
+        "default": "./dist/widgets/inline.cjs"
+      }
+    },
+    "./widgets/swipe-cards": {
+      "import": {
+        "types": "./dist/widgets/swipe-cards.d.ts",
+        "default": "./dist/widgets/swipe-cards.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/swipe-cards.d.cts",
+        "default": "./dist/widgets/swipe-cards.cjs"
+      }
+    },
+    "./widgets/checklist": {
+      "import": {
+        "types": "./dist/widgets/checklist.d.ts",
+        "default": "./dist/widgets/checklist.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/checklist.d.cts",
+        "default": "./dist/widgets/checklist.cjs"
+      }
+    },
+    "./widgets/tour": {
+      "import": {
+        "types": "./dist/widgets/tour.d.ts",
+        "default": "./dist/widgets/tour.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/tour.d.cts",
+        "default": "./dist/widgets/tour.cjs"
+      }
+    },
+    "./widgets/video-feed": {
+      "import": {
+        "types": "./dist/widgets/video-feed.d.ts",
+        "default": "./dist/widgets/video-feed.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/video-feed.d.cts",
+        "default": "./dist/widgets/video-feed.cjs"
+      }
+    },
+    "./package.json": "./package.json",
+    "./widgets/ads": {
+      "import": {
+        "types": "./dist/widgets/ads.d.ts",
+        "default": "./dist/widgets/ads.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/ads.d.cts",
+        "default": "./dist/widgets/ads.cjs"
+      }
+    },
+    "./widgets/game": {
+      "import": {
+        "types": "./dist/widgets/game.d.ts",
+        "default": "./dist/widgets/game.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/game.d.cts",
+        "default": "./dist/widgets/game.cjs"
+      }
+    },
+    "./game.css": "./dist/game.css",
+    "./ugc": {
+      "import": {
+        "types": "./dist/ugc/index.d.ts",
+        "default": "./dist/ugc/index.mjs"
+      },
+      "require": {
+        "types": "./dist/ugc/index.d.cts",
+        "default": "./dist/ugc/index.cjs"
+      }
+    },
+    "./ugc.css": "./dist/ugc.css",
+    "./widgets/live": {
+      "import": {
+        "types": "./dist/widgets/live.d.ts",
+        "default": "./dist/widgets/live.mjs"
+      },
+      "require": {
+        "types": "./dist/widgets/live.d.cts",
+        "default": "./dist/widgets/live.cjs"
+      }
+    },
+    "./live.css": "./dist/live.css"
+  },
+  "typesVersions": {
+    "*": {
+      "dom": [
+        "./dist/dom/index.d.ts"
+      ],
+      "components": [
+        "./dist/dom/components.d.ts"
+      ],
+      "react": [
+        "./dist/react/index.d.ts"
+      ],
+      "lottie": [
+        "./dist/lottie/index.d.ts"
+      ],
+      "video": [
+        "./dist/video/index.d.ts"
+      ],
+      "client": [
+        "./dist/client/index.d.ts"
+      ],
+      "client/react": [
+        "./dist/client/react.d.ts"
+      ],
+      "widgets/canvas": [
+        "./dist/widgets/canvas.d.ts"
+      ],
+      "widgets/react": [
+        "./dist/widgets/react.d.ts"
+      ],
+      "widgets/inline": [
+        "./dist/widgets/inline.d.ts"
+      ],
+      "widgets/swipe-cards": [
+        "./dist/widgets/swipe-cards.d.ts"
+      ],
+      "widgets/checklist": [
+        "./dist/widgets/checklist.d.ts"
+      ],
+      "widgets/tour": [
+        "./dist/widgets/tour.d.ts"
+      ],
+      "widgets/video-feed": [
+        "./dist/widgets/video-feed.d.ts"
+      ],
+      "ugc": [
+        "./dist/ugc/index.d.ts"
+      ],
+      "widgets/live": [
+        "./dist/widgets/live.d.ts"
+      ],
+      "widgets/ads": [
+        "./dist/widgets/ads.d.ts"
+      ],
+      "widgets/game": [
+        "./dist/widgets/game.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsup && cp src/styles.css dist/styles.css && cp src/widgets.css dist/widgets.css && cp src/ugc.css dist/ugc.css && cp src/game.css dist/game.css && cp src/live.css dist/live.css",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "lottie-web": ">=5.12.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "lottie-web": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "19.0.0",
+    "jsdom": "24.1.3",
+    "lottie-web": "5.13.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.11",
+    "zod": "^3.23.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

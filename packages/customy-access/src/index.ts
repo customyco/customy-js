@@ -49,6 +49,7 @@ import {
     type LinkedProvider,
 } from "@customyai/client";
 import { warnDeprecated } from "./deprecation";
+import { SDK_VERSION } from "./version";
 
 export {
     getCapabilityFromMatrix,
@@ -193,13 +194,15 @@ class BaseClient {
             }
         }
 
+        // Content-Type only when there is a body: a bodyless DELETE/POST with a
+        // JSON content-type is rejected by the server with a 400.
         const headers: Record<string, string> = {
-            "Content-Type": "application/json",
+            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
             ...overrideHeaders,
         };
 
         if (!isBrowser) {
-            headers["User-Agent"] = this.config.userAgent ?? "customy-access-sdk/0.2.3";
+            headers["User-Agent"] = this.config.userAgent ?? `customy-access-sdk/${SDK_VERSION}`;
         }
         if (this.config.apiKey) {
             headers["X-API-Key"] = this.config.apiKey;
@@ -1514,9 +1517,15 @@ class SCIMClient extends BaseClient {
 // ─── API Keys (M2M) ────────────────────────────────────────────
 
 class M2MClient extends BaseClient {
+    /**
+     * @deprecated Returns an OPAQUE token from /api/v1/oauth/token that Billing,
+     * Send and Data reject. Use {@link M2MClient.getMachineToken} (signed JWT
+     * with an audience) for product integrations.
+     */
     async getToken(params: { clientId: string; clientSecret: string; scopes?: string[]; audience?: string }): Promise<{
         access_token: string; token_type: "Bearer"; expires_in: number; scope: string;
     }> {
+        warnDeprecated("m2m.getToken", "it returns an opaque token that Billing/Send/Data reject; use m2m.getMachineToken({ clientId, clientSecret, audience }) for product integrations.");
         return this.request("POST", "/api/v1/oauth/token", {
             grant_type: "client_credentials",
             client_id: params.clientId,

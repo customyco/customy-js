@@ -1,0 +1,54 @@
+/*
+ * @customyai/stories-render/live.css — estilos del Live (transmisión en vivo dentro de un grupo de historias). OPCIONAL y se importa
+ * JUNTO a styles.css (de ahí salen los tokens y `.cs-btn`):
+ *   import "@customyai/stories-render/styles.css"; import "@customyai/stories-render/live.css";
+ * Mismas reglas: colores solo de tokens, propiedades lógicas (LTR/RTL), `prefers-reduced-motion` respetado.
+ */
+.cs-live { display: grid; gap: 10px; padding: 12px; border-radius: 16px; background: hsl(var(--cs-card)); border: 1px solid hsl(var(--cs-border)); color: hsl(var(--cs-fg)); font-size: 14px; }
+.cs-live__head { display: flex; align-items: center; gap: 10px; }
+.cs-live__title { margin: 0; font-size: 16px; font-weight: 700; }
+.cs-live__badge { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: .06em; background: hsl(var(--cs-primary)); color: hsl(var(--cs-primary-fg, var(--cs-bg))); }
+.cs-live__badge[data-kind="live"]::before { content: ""; display: inline-block; inline-size: 7px; block-size: 7px; margin-inline-end: 6px; border-radius: 50%; background: currentColor; animation: cs-live-pulse 1.6s ease-in-out infinite; }
+.cs-live__badge[data-kind="ended"] { background: hsl(var(--cs-muted)); }
+.cs-live__stage { position: relative; aspect-ratio: 9 / 16; max-block-size: 70vh; inline-size: 100%; border-radius: 12px; overflow: hidden; background: hsl(var(--cs-bg)); }
+.cs-live__video { inline-size: 100%; block-size: 100%; object-fit: cover; }
+.cs-live__audio { display: none; }
+.cs-live__stage[data-paused]::after { content: "❚❚"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; background: hsl(var(--cs-bg) / .55); color: hsl(var(--cs-fg)); }
+.cs-live__captions { position: absolute; inset-inline: 8px; inset-block-end: 8px; margin: 0; padding: 6px 10px; border-radius: 8px; background: hsl(var(--cs-bg) / .8); color: hsl(var(--cs-fg)); font-size: 15px; text-align: center; }
+.cs-live__captions[hidden] { display: none; }
+.cs-live__status { margin: 0; min-block-size: 18px; font-size: 13px; color: hsl(var(--cs-muted)); }
+.cs-live__when, .cs-live__note, .cs-live__audience { margin: 0; color: hsl(var(--cs-muted)); font-size: 13px; }
+.cs-live__gate, .cs-live__controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cs-live__gate[hidden], .cs-live__products[hidden], .cs-live__reactions[hidden], .cs-live__chat[hidden], .cs-live__controls [hidden] { display: none; }
+.cs-live__notice { display: flex; align-items: center; gap: 8px; min-block-size: 40px; }
+.cs-live__link { color: hsl(var(--cs-primary)); text-decoration: underline; }
+.cs-live .cs-btn { inline-size: auto; min-block-size: 40px; min-inline-size: 40px; padding: 0 14px; font: inherit; font-weight: 600; cursor: pointer; }
+.cs-live .cs-btn--ghost { background: transparent; color: hsl(var(--cs-fg)); border: 1px solid hsl(var(--cs-border)); box-shadow: none; }
+.cs-live .cs-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.cs-live :focus-visible { outline: 2px solid hsl(var(--cs-primary)); outline-offset: 2px; }
+.cs-live__products { display: flex; gap: 8px; margin: 0; padding: 0; overflow-x: auto; list-style: none; }
+.cs-live__product { display: grid; gap: 4px; min-inline-size: 150px; padding: 8px; border: 1px solid hsl(var(--cs-border)); border-radius: 12px; list-style: none; }
+.cs-live__product-img { inline-size: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+.cs-live__product-title { font-weight: 600; }
+.cs-live__product-price { color: hsl(var(--cs-muted)); }
+.cs-live__reactions { display: flex; gap: 6px; }
+.cs-live__react { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.cs-live__count { font-size: 11px; color: hsl(var(--cs-muted)); }
+.cs-live__float { position: absolute; inset-inline-start: 50%; inset-block-end: 100%; animation: cs-live-float 1.1s ease-out forwards; pointer-events: none; }
+.cs-live__chat { display: grid; gap: 6px; }
+.cs-live__chat-title { margin: 0; font-size: 13px; }
+.cs-live__log { display: grid; gap: 4px; margin: 0; padding: 0; max-block-size: 180px; overflow-y: auto; list-style: none; }
+.cs-live__msg { display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; overflow-wrap: anywhere; }
+.cs-live__msg[data-mine="true"] { color: hsl(var(--cs-primary)); }
+.cs-live__opts { margin-inline-start: auto; }
+.cs-live__opts[open] { display: grid; gap: 6px; inline-size: 100%; padding: 6px; border: 1px solid hsl(var(--cs-border)); border-radius: 10px; }
+.cs-live__opts summary { cursor: pointer; min-block-size: 24px; min-inline-size: 24px; }
+.cs-live__chatstatus { margin: 0; min-block-size: 16px; font-size: 12px; color: hsl(var(--cs-muted)); }
+.cs-live__form { display: flex; gap: 6px; }
+.cs-live__input, .cs-live__reason { flex: 1; padding: 8px 10px; border: 1px solid hsl(var(--cs-border)); border-radius: 10px; background: hsl(var(--cs-bg)); color: inherit; font: inherit; }
+@keyframes cs-live-pulse { 50% { opacity: .35; } }
+@keyframes cs-live-float { to { transform: translateY(-48px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .cs-live__badge[data-kind="live"]::before, .cs-live__float { animation: none; }
+}
+.cs-live[data-reduced-motion="true"] .cs-live__badge[data-kind="live"]::before, .cs-live[data-reduced-motion="true"] .cs-live__float { animation: none; }

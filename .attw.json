@@ -1,0 +1,11 @@
+{
+  "excludeEntrypoints": [
+    "./embed.css",
+    "./game.css",
+    "./iife",
+    "./live.css",
+    "./styles.css",
+    "./ugc.css",
+    "./widgets.css"
+  ]
+}

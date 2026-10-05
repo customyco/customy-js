@@ -65,6 +65,26 @@ export const AppMeterSchema = z.object({
   unit: z.string().min(1).max(40),
 }).strict();
 
+/** Topes de `permissions`/`roles` (Access P3, docs/CUSTOMY_ACCESS_DELEGATED_PERMISSIONS.md). */
+export const APP_AUTHORIZATION_LIMITS = { permissions: 128, roles: 32, permissionsPerRole: 128 } as const;
+
+const authorizationKey = z.string().min(3).max(120)
+  .regex(/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9_-]*)+$/, "Keys are dotted lowercase identifiers without wildcards");
+
+/** Permiso que la app declara; su clave vive en el espacio de nombres `<clave-de-la-app>.`. */
+export const AppPermissionDeclarationSchema = z.object({
+  key: authorizationKey,
+  description: z.string().trim().min(1).max(300),
+}).strict();
+
+/** Rol que la app declara: agrupa permisos declarados en el mismo manifiesto. */
+export const AppRoleDeclarationSchema = z.object({
+  key: authorizationKey,
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(300).default(""),
+  permissions: z.array(authorizationKey).max(APP_AUTHORIZATION_LIMITS.permissionsPerRole),
+}).strict();
+
 export const AppManifestSchema = z.object({
   /** Referencia opcional al JSON Schema publicado, para autocompletado en editores. */
   $schema: z.string().url().max(200).optional(),
@@ -79,6 +99,9 @@ export const AppManifestSchema = z.object({
   capabilities: z.array(AppCapabilitySchema).max(256).default([]),
   plans: z.array(AppPlanSchema).max(32).default([]),
   meters: z.array(AppMeterSchema).max(64).default([]),
+  /** Opcional: permisos y roles de la app (clave `<clave-de-la-app>.…`, sin comodines). */
+  permissions: z.array(AppPermissionDeclarationSchema).max(APP_AUTHORIZATION_LIMITS.permissions).optional(),
+  roles: z.array(AppRoleDeclarationSchema).max(APP_AUTHORIZATION_LIMITS.roles).optional(),
 }).strict();
 export type AppManifest = z.infer<typeof AppManifestSchema>;
 
@@ -102,12 +125,15 @@ export type AppManifest = z.infer<typeof AppManifestSchema>;
  *    prefijos.
  *  - `app-plans:write` (2026-09-28): fijar el plan de UN miembro de su entorno
  *    entre los `plans[]` de su manifiesto (`PUT …/app-members/:userId/plan`).
+ *  - `app-roles:read` / `app-roles:write`: los roles que la app declara en
+ *    `roles[]` y la autoasignación de UNO de ellos a un miembro de su entorno.
  * Cualquier otro scope (`admin:*`, `*`, otras escrituras, comodines) es
  * `SCOPE_OUTSIDE_PRODUCT`: una app nunca obtiene administración de Access.
  */
 export const APP_ACCESS_SCOPES = [
   "capabilities:read", "users:contact:read", "users:read", "flags:read", "catalog:read",
   "app-relationships:read", "app-relationships:write", "app-plans:write",
+  "app-roles:read", "app-roles:write",
 ] as const;
 export type AppAccessScope = (typeof APP_ACCESS_SCOPES)[number];
 const APP_ACCESS_SCOPE_SET: ReadonlySet<string> = new Set(APP_ACCESS_SCOPES);
@@ -163,6 +189,29 @@ export function appManifestProblems(input: unknown, manifests: readonly ProductM
   });
   app.plans.forEach((plan, index) => {
     for (const key of Object.keys(plan.capabilities)) if (!capabilities.has(key)) problems.push({ path: `plans.${index}.capabilities.${key}`, code: "CAPABILITY_UNDECLARED" });
+  });
+
+  const prefix = `${app.key}.`;
+  const permissionKeys = new Set<string>();
+  (app.permissions ?? []).forEach((permission, index) => {
+    if (!permission.key.startsWith(prefix)) problems.push({ path: `permissions.${index}.key`, code: "PERMISSION_NAMESPACE_VIOLATION" });
+    if (permissionKeys.has(permission.key)) problems.push({ path: `permissions.${index}`, code: "DUPLICATE" });
+    permissionKeys.add(permission.key);
+  });
+  const roleKeys = new Set<string>();
+  const roleNames = new Set<string>();
+  (app.roles ?? []).forEach((role, index) => {
+    if (!role.key.startsWith(prefix)) problems.push({ path: `roles.${index}.key`, code: "ROLE_NAMESPACE_VIOLATION" });
+    if (roleKeys.has(role.key)) problems.push({ path: `roles.${index}`, code: "DUPLICATE" });
+    if (roleNames.has(role.name.toLowerCase())) problems.push({ path: `roles.${index}.name`, code: "DUPLICATE" });
+    roleKeys.add(role.key);
+    roleNames.add(role.name.toLowerCase());
+    const inRole = new Set<string>();
+    role.permissions.forEach((code, permissionIndex) => {
+      if (!permissionKeys.has(code)) problems.push({ path: `roles.${index}.permissions.${permissionIndex}`, code: "PERMISSION_UNDECLARED" });
+      if (inRole.has(code)) problems.push({ path: `roles.${index}.permissions.${permissionIndex}`, code: "DUPLICATE" });
+      inRole.add(code);
+    });
   });
   return problems;
 }

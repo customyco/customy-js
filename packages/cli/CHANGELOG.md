@@ -1,5 +1,11 @@
 # @customyai/cli
 
+## 0.5.0
+
+### Minor Changes
+
+- `customy apps validate | sync` ahora aceptan los campos opcionales `permissions` y `roles` del manifiesto `app/v1` y los scopes de Access `app-roles:read` / `app-roles:write`. La validación es la misma que aplica el servidor (claves en el espacio de nombres `<clave-de-la-app>.`, sin comodines, permisos de rol declarados, topes de cantidad); `validate` y `sync` imprimen los conteos de permisos y roles y la reconciliación del servidor. Los manifiestos existentes siguen validando igual.
+
 ## 0.4.0
 
 ### Minor Changes
