@@ -1,0 +1,45 @@
+{
+  "$comment": "Tope en bytes min+gzip. `entrypoints`: el bundle ESM publicado de cada export (lo mide tooling/scripts/sdk-release-gates.mjs, dependencias públicas fuera). `iife`: el bundle autónomo `<script>` y sus módulos de carga diferida, cada uno un fichero aparte que solo se descarga si la campaña lo necesita (lo mide scripts/measure-size.mjs; el principal incluye el renderer, el cliente, los eventos y el puente).",
+  "entrypoints": {
+    ".": {
+      "platform": "browser",
+      "source": "src/iife.ts",
+      "maxGzipBytes": 123015
+    },
+    "./protocol": {
+      "platform": "browser",
+      "source": "src/protocol.ts",
+      "maxGzipBytes": 3316
+    }
+  },
+  "iife": {
+    ".": {
+      "source": "src/iife.ts",
+      "maxGzipBytes": 40091
+    },
+    "components": {
+      "source": "src/modules/components.ts",
+      "maxGzipBytes": 5894
+    },
+    "lottie": {
+      "source": "src/modules/lottie.ts",
+      "maxGzipBytes": 55165
+    },
+    "game": {
+      "source": "src/modules/game.ts",
+      "maxGzipBytes": 12158
+    },
+    "video": {
+      "source": "src/modules/video.ts",
+      "maxGzipBytes": 5111
+    },
+    "live": {
+      "source": "src/modules/live.ts",
+      "maxGzipBytes": 12408
+    },
+    "ads": {
+      "source": "src/modules/ads.ts",
+      "maxGzipBytes": 3396
+    }
+  }
+}
