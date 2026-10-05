@@ -1,0 +1,64 @@
+/*
+ * @customyai/stories-render/game.css — estilos del Game Center (ruleta, rasca, tarjeta de premio, memoria, tres iguales).
+ * OPCIONAL: se importa junto a styles.css y widgets.css (de ahí salen los tokens, `.cs-sr` y el foco):
+ *   import "@customyai/stories-render/styles.css"; import "@customyai/stories-render/widgets.css"; import "@customyai/stories-render/game.css";
+ * Mismas reglas de siempre: colores solo de tokens, propiedades lógicas (LTR/RTL), y con `prefers-reduced-motion` o
+ * `data-motion="reduced"` ninguna animación (el resultado se ve igual).
+ */
+.cs-game { display: grid; gap: 12px; padding: 16px; border-radius: var(--cs-radius, 16px); background: hsl(var(--cs-card)); border: 1px solid hsl(var(--cs-border)); color: hsl(var(--cs-fg)); position: relative; max-inline-size: 420px; margin-inline: auto; }
+.cs-game__title { margin: 0; font-size: 1.2rem; font-weight: 700; }
+.cs-game__desc, .cs-game__hint, .cs-game__info, .cs-game__summary { margin: 0; color: hsl(var(--cs-muted)); font-size: .9rem; }
+.cs-game__close { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; inline-size: 44px; block-size: 44px; border: 0; border-radius: 999px; background: transparent; color: inherit; font-size: 1.6rem; cursor: pointer; }
+.cs-game__rules { display: grid; gap: 8px; }
+.cs-game__rule { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .9rem; }
+.cs-game__rule input { inline-size: 20px; block-size: 20px; flex: none; }
+.cs-game__terms { color: hsl(var(--cs-primary)); text-decoration: underline; }
+.cs-game__warn { margin: 0; color: hsl(var(--cs-danger)); font-size: .9rem; }
+.cs-game__stage { display: grid; justify-items: center; min-block-size: 200px; align-content: center; }
+.cs-game__idle, .cs-game__play { display: grid; gap: 10px; justify-items: center; inline-size: 100%; }
+.cs-game__placeholder { display: grid; place-items: center; inline-size: 160px; block-size: 160px; border-radius: 24px; background: hsl(var(--cs-border)); font-size: 3rem; }
+.cs-game__actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.cs-game__btn { min-block-size: 44px; padding: 0 20px; border: 1px solid hsl(var(--cs-border)); border-radius: 999px; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.cs-game__btn--primary { background: hsl(var(--cs-primary)); color: hsl(var(--cs-primary-fg)); border-color: transparent; }
+.cs-game__btn:disabled { opacity: .6; cursor: progress; }
+.cs-game :focus-visible { outline: 2px solid hsl(var(--cs-primary)); outline-offset: 2px; }
+
+/* ruleta */
+.cs-game__wheel { position: relative; inline-size: min(100%, 300px); aspect-ratio: 1; }
+.cs-game__disc { position: absolute; inset: 0; border-radius: 50%; border: 4px solid hsl(var(--cs-fg)); overflow: hidden; }
+.cs-game__seg { position: absolute; inset-block-start: 50%; inset-inline-start: 50%; inline-size: 44%; padding-inline-start: 12%; transform-origin: 0 0; transform: rotate(calc(var(--cs-seg-a) - 90deg)); font-size: .72rem; font-weight: 700; line-height: 1.1; color: hsl(var(--cs-on-media)); text-shadow: 0 1px 2px hsl(var(--cs-scrim) / .6); white-space: normal; overflow-wrap: anywhere; }
+.cs-game__pointer { position: absolute; inset-block-start: -6px; inset-inline-start: 50%; z-index: 2; border-inline: 10px solid transparent; border-block-start: 18px solid hsl(var(--cs-fg)); transform: translateX(-50%); }
+
+/* rasca y gana, tarjeta de premio */
+.cs-game__card { position: relative; inline-size: min(100%, 300px); aspect-ratio: 15 / 8; border-radius: 12px; overflow: hidden; }
+.cs-game__face { display: grid; place-items: center; inline-size: 100%; block-size: 100%; padding: 12px; text-align: center; background: hsl(var(--cs-primary) / .15); }
+.cs-game__face[data-outcome="win"] { background: hsl(var(--cs-primary) / .3); }
+.cs-game__canvas, .cs-game__cover { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; touch-action: none; cursor: crosshair; }
+.cs-game__canvas { color: hsl(var(--cs-muted)); }
+.cs-game__cover { background: hsl(var(--cs-muted) / .5); }
+.cs-game__card[data-open="true"] .cs-game__canvas, .cs-game__card[data-open="true"] .cs-game__cover { visibility: hidden; }
+.cs-game__flip { inline-size: min(100%, 220px); aspect-ratio: 3 / 4; padding: 0; border: 0; background: transparent; perspective: 800px; cursor: pointer; }
+.cs-game__flipper { position: relative; inline-size: 100%; block-size: 100%; transform-style: preserve-3d; transition: transform .45s ease; }
+.cs-game__flip[data-open="true"] .cs-game__flipper { transform: rotateY(180deg); }
+.cs-game__front, .cs-game__flipper .cs-game__face { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 12px; display: grid; place-items: center; }
+.cs-game__front { background: hsl(var(--cs-primary)); font-size: 3rem; }
+.cs-game__flipper .cs-game__face { transform: rotateY(180deg); border: 2px solid hsl(var(--cs-primary)); }
+
+/* memoria y tres iguales */
+.cs-game__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; inline-size: min(100%, 300px); }
+.cs-game__grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cs-game__tile { aspect-ratio: 1; min-block-size: 44px; border: 1px solid hsl(var(--cs-border)); border-radius: 10px; background: hsl(var(--cs-primary) / .18); color: inherit; font-size: 1.6rem; cursor: pointer; }
+.cs-game__tile[data-state="up"], .cs-game__tile[data-state="matched"] { background: hsl(var(--cs-card)); }
+.cs-game__tile[data-state="matched"] { border-color: hsl(var(--cs-primary)); cursor: default; }
+
+/* resultado */
+.cs-game__result { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 12px; border-radius: 12px; background: hsl(var(--cs-primary) / .12); }
+.cs-game__result[data-outcome="win"] { background: hsl(var(--cs-primary) / .25); }
+.cs-game__headline { margin: 0; font-size: 1.1rem; font-weight: 700; }
+.cs-game__codeline, .cs-game__points, .cs-game__valid { margin: 0; }
+.cs-game__code { padding: 4px 10px; border-radius: 8px; background: hsl(var(--cs-card)); border: 1px dashed hsl(var(--cs-primary)); font-size: 1.1rem; letter-spacing: .06em; user-select: all; }
+.cs-game-dialog { padding: 0; border: 0; background: transparent; max-inline-size: 100%; }
+.cs-game-dialog::backdrop { background: hsl(var(--cs-scrim) / .6); }
+
+@media (prefers-reduced-motion: reduce) { .cs-game__flipper { transition: none; } }
+.cs-game[data-motion="reduced"] .cs-game__flipper, .cs-game[data-motion="reduced"] .cs-game__disc { transition: none !important; }

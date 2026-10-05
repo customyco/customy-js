@@ -1,6 +1,6 @@
 {
   "name": "@customyai/web",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Customy same-origin session handlers over the standard Request and Response: auth proxy, social sign-in, sign-out, impersonation callback, server session, route protection, cookie names and local session token verification. Node and edge; never in a browser bundle.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -67,7 +67,7 @@
   },
   "dependencies": {
     "@customyai/core": "^0.2.0",
-    "@customyai/server": "^0.3.0",
+    "@customyai/server": "^0.4.0",
     "jose": "^5.2.2"
   },
   "devDependencies": {

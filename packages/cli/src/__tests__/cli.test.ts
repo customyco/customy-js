@@ -102,4 +102,49 @@ describe("customy apps", () => {
     expect(await runCli(["apps", "sync", "--workspace-env", "env_ws"], w.io({ env: { ...insecure, CUSTOMY_ACCESS_URL: "https://a.example.test" }, fetch: denied }))).toBe(1);
     expect(w.errors.at(-1)).toMatch(/CONNECTION_ADMIN_REQUIRED \(403\)/);
   });
+
+  it("permisos y roles: validate cuenta, explica los errores y sync los envía a la ruta admin con la reconciliación", async () => {
+    const withRoles = {
+      ...manifest,
+      products: [{ product: "customy-access", scopes: ["app-roles:read", "app-roles:write"] }],
+      permissions: [{ key: "example-app.expenses.read", description: "Read" }],
+      roles: [{ key: "example-app.viewer", name: "Viewer", permissions: ["example-app.expenses.read"] }],
+    };
+    const good = workspace(withRoles);
+    expect(await runCli(["apps", "validate"], good.io())).toBe(0);
+    expect(good.lines[0]).toContain("1 permisos, 1 roles");
+
+    const bad = workspace({ ...withRoles, permissions: [{ key: "other.read", description: "x" }], roles: [{ key: "example-app.viewer", name: "Viewer", permissions: ["example-app.ghost"] }] });
+    expect(await runCli(["apps", "validate"], bad.io())).toBe(1);
+    expect(bad.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining("permissions.0.key: PERMISSION_NAMESPACE_VIOLATION — "),
+      expect.stringContaining("roles.0.permissions.0: PERMISSION_UNDECLARED — "),
+    ]));
+    const wildcard = workspace({ ...withRoles, permissions: [{ key: "example-app.*", description: "x" }] });
+    expect(await runCli(["apps", "validate"], wildcard.io())).toBe(1);
+
+    let sent: Record<string, unknown> = {};
+    const fetcher = (async (url: string, init: RequestInit) => {
+      if (url.endsWith("/install")) return Response.json({ replayed: true, connection: { applicationId: "app_1", environmentId: "env_app", revision: 3 } });
+      sent = JSON.parse(String(init.body));
+      return Response.json({ revision: 4, unchanged: false, reconciliation: { authorization: { status: "reconciled", changed: true, permissions: 1, roles: 1, rolesOrphaned: 0 } } });
+    }) as unknown as typeof fetch;
+    const env = { CUSTOMY_ACCESS_URL: "https://access.example.test", CUSTOMY_ACCESS_TOKEN: "admin-token" };
+    const w = workspace(withRoles);
+    expect(await runCli(["apps", "sync", "--workspace-env", "env_ws"], w.io({ env, fetch: fetcher }))).toBe(0);
+    expect(sent.manifest).toMatchObject({ permissions: [{ key: "example-app.expenses.read" }], roles: [{ key: "example-app.viewer", description: "" }] });
+    expect(w.lines).toEqual(expect.arrayContaining([expect.stringContaining("1 permisos, 1 roles"), "✓ authorization: actualizado (1 permisos, 1 roles)"]));
+
+    const conflict = (async (url: string) => url.endsWith("/install")
+      ? Response.json({ replayed: true, connection: { applicationId: "app_1", environmentId: "env_app", revision: 3 } })
+      : Response.json({ revision: 4, reconciliation: { authorization: { status: "failed", code: "PERMISSION_OWNED_BY_OTHER_APP", conflicts: ["example-app.x"] } } })) as unknown as typeof fetch;
+    const c = workspace(withRoles);
+    expect(await runCli(["apps", "sync", "--workspace-env", "env_ws"], c.io({ env, fetch: conflict }))).toBe(1);
+    expect(c.errors[0]).toContain("PERMISSION_OWNED_BY_OTHER_APP (example-app.x)");
+  });
+
+  it("los manifiestos sin permisos ni roles siguen validando", () => {
+    expect(validateManifest(manifest).ok).toBe(true);
+  });
 });
+

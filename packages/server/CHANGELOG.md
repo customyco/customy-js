@@ -1,5 +1,11 @@
 # @customyai/server
 
+## 0.4.0
+
+### Minor Changes
+
+- Add `verifyWebhookSignature(rawBody, header, secret, toleranceSec?)` to verify the `Customy-Signature: t=<unix>,v1=<hex>` header that Customy Access now sends on webhooks. It signs `<t>.<body>`, rejects deliveries outside the tolerance window (default 300 s) and accepts several `v1` values so a webhook secret can be rotated without downtime.
+
 ## 0.3.0
 
 ### Minor Changes

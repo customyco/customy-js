@@ -1,0 +1,701 @@
+{
+ "$comment": "Vectores del protocolo del puente v1: UNA fuente de verdad para TypeScript (este paquete), Kotlin (stories-embed-android), Swift (stories-embed-swift) y C# (stories-unity). Los lee test/vectors.test.ts; los demás paquetes los leen del mismo fichero. Solo incluye casos en los que TODAS las implementaciones coinciden (la normalización de la URL no se compara, solo ok/esquema).",
+ "urls": [
+  {
+   "url": "https://example.com/x?y=1#z",
+   "ok": true,
+   "scheme": "https"
+  },
+  {
+   "url": "mailto:hola@example.com",
+   "ok": true,
+   "scheme": "mailto"
+  },
+  {
+   "url": "tel:+573001112233",
+   "ok": true,
+   "scheme": "tel"
+  },
+  {
+   "url": "sms:+573001112233?body=hola",
+   "ok": true,
+   "scheme": "sms"
+  },
+  {
+   "url": "myapp://promo/1",
+   "ok": true,
+   "scheme": "myapp",
+   "extraSchemes": [
+    "myapp"
+   ]
+  },
+  {
+   "url": "myapp://promo/1",
+   "ok": false
+  },
+  {
+   "url": "javascript:alert(1)",
+   "ok": false
+  },
+  {
+   "url": "JaVaScRiPt:alert(1)",
+   "ok": false
+  },
+  {
+   "url": "java\tscript:alert(1)",
+   "ok": false
+  },
+  {
+   "url": "java\nscript:alert(1)",
+   "ok": false
+  },
+  {
+   "url": " javascript:alert(1)",
+   "ok": false
+  },
+  {
+   "url": "javascript:alert(1)",
+   "ok": false,
+   "extraSchemes": [
+    "javascript"
+   ]
+  },
+  {
+   "url": "data:text/html;base64,PHNjcmlwdD4=",
+   "ok": false
+  },
+  {
+   "url": "data:text/html,x",
+   "ok": false,
+   "extraSchemes": [
+    "data"
+   ]
+  },
+  {
+   "url": "file:///etc/passwd",
+   "ok": false
+  },
+  {
+   "url": "file:///etc/passwd",
+   "ok": false,
+   "extraSchemes": [
+    "file"
+   ]
+  },
+  {
+   "url": "blob:https://example.com/uuid",
+   "ok": false
+  },
+  {
+   "url": "intent://scan/#Intent;scheme=zxing;end",
+   "ok": false
+  },
+  {
+   "url": "intent://scan/#Intent;scheme=zxing;end",
+   "ok": false,
+   "extraSchemes": [
+    "intent"
+   ]
+  },
+  {
+   "url": "content://com.android.contacts/contacts",
+   "ok": false
+  },
+  {
+   "url": "vbscript:msgbox(1)",
+   "ok": false
+  },
+  {
+   "url": "about:blank",
+   "ok": false
+  },
+  {
+   "url": "http://example.com/",
+   "ok": false
+  },
+  {
+   "url": "http://example.com/",
+   "ok": false,
+   "extraSchemes": [
+    "http"
+   ]
+  },
+  {
+   "url": "http://localhost:3000/x",
+   "ok": true,
+   "scheme": "http",
+   "allowLocalHttp": true
+  },
+  {
+   "url": "http://localhost:3000/x",
+   "ok": false
+  },
+  {
+   "url": "http://example.com/x",
+   "ok": false,
+   "allowLocalHttp": true
+  },
+  {
+   "url": "ftp://example.com/",
+   "ok": false
+  },
+  {
+   "url": "ws://example.com/",
+   "ok": false
+  },
+  {
+   "url": "https://user:pass@example.com/",
+   "ok": false
+  },
+  {
+   "url": "https://user@example.com/",
+   "ok": false
+  },
+  {
+   "url": "/relativa",
+   "ok": false
+  },
+  {
+   "url": "//example.com/x",
+   "ok": false
+  },
+  {
+   "url": "example.com/x",
+   "ok": false
+  },
+  {
+   "url": "",
+   "ok": false
+  },
+  {
+   "url": "https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "ok": false
+  },
+  {
+   "url": "https://exa\u0000mple.com/",
+   "ok": false
+  }
+ ],
+ "pageMessages": [
+  {
+   "name": "ready",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "ready",
+    "sdk": "stories-render/0.1.0",
+    "protocol": 1,
+    "capabilities": [
+     "story_bar"
+    ],
+    "awaitingInit": true
+   },
+   "ok": true,
+   "type": "ready"
+  },
+  {
+   "name": "resize inline",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "resize",
+    "height": 120,
+    "mode": "inline"
+   },
+   "ok": true,
+   "type": "resize"
+  },
+  {
+   "name": "resize fullscreen",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "resize",
+    "height": 800,
+    "mode": "fullscreen"
+   },
+   "ok": true,
+   "type": "resize"
+  },
+  {
+   "name": "resize negativo",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "resize",
+    "height": -1,
+    "mode": "inline"
+   },
+   "ok": false
+  },
+  {
+   "name": "resize enorme",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "resize",
+    "height": 100001,
+    "mode": "inline"
+   },
+   "ok": false
+  },
+  {
+   "name": "resize modo raro",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "resize",
+    "height": 10,
+    "mode": "popup"
+   },
+   "ok": false
+  },
+  {
+   "name": "open_url https",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "open_url",
+    "url": "https://example.com/x",
+    "kind": "url",
+    "elementId": "banner.b2.s1"
+   },
+   "ok": true,
+   "type": "open_url"
+  },
+  {
+   "name": "open_url javascript",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "open_url",
+    "url": "javascript:alert(1)",
+    "kind": "url"
+   },
+   "ok": false
+  },
+  {
+   "name": "open_url data",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "open_url",
+    "url": "data:text/html,x",
+    "kind": "url"
+   },
+   "ok": false
+  },
+  {
+   "name": "open_url deep link sin declarar",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "open_url",
+    "url": "myapp://promo/1",
+    "kind": "deep_link"
+   },
+   "ok": false
+  },
+  {
+   "name": "open_url deep link declarado",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "open_url",
+    "url": "myapp://promo/1",
+    "kind": "deep_link"
+   },
+   "ok": true,
+   "type": "open_url",
+   "extraSchemes": [
+    "myapp"
+   ]
+  },
+  {
+   "name": "open_url kind raro",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "open_url",
+    "url": "https://example.com/",
+    "kind": "x"
+   },
+   "ok": false
+  },
+  {
+   "name": "close",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "close",
+    "reason": "user"
+   },
+   "ok": true,
+   "type": "close"
+  },
+  {
+   "name": "close sin reason",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "close"
+   },
+   "ok": false
+  },
+  {
+   "name": "event",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "event",
+    "name": "story.view",
+    "data": {
+     "groupId": "g1"
+    }
+   },
+   "ok": true,
+   "type": "event"
+  },
+  {
+   "name": "event nombre inválido",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "event",
+    "name": "no valido!",
+    "data": {}
+   },
+   "ok": false
+  },
+  {
+   "name": "event sin data",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "event",
+    "name": "story.view"
+   },
+   "ok": false
+  },
+  {
+   "name": "permission",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "request_permission",
+    "permission": "notifications",
+    "data": {
+     "componentId": "c1"
+    }
+   },
+   "ok": true,
+   "type": "request_permission"
+  },
+  {
+   "name": "permission desconocido",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "request_permission",
+    "permission": "root",
+    "data": {}
+   },
+   "ok": false
+  },
+  {
+   "name": "share con https",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "share",
+    "url": "https://example.com/s",
+    "title": "hola"
+   },
+   "ok": true,
+   "type": "share"
+  },
+  {
+   "name": "share solo título",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "share",
+    "title": "hola"
+   },
+   "ok": true,
+   "type": "share"
+  },
+  {
+   "name": "share con esquema propio",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "share",
+    "url": "myapp://x"
+   },
+   "ok": false,
+   "extraSchemes": [
+    "myapp"
+   ]
+  },
+  {
+   "name": "share con javascript",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "share",
+    "url": "javascript:alert(1)"
+   },
+   "ok": false
+  },
+  {
+   "name": "request_token",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "request_token",
+    "requestId": "t1abc",
+    "forceRefresh": false
+   },
+   "ok": true,
+   "type": "request_token"
+  },
+  {
+   "name": "request_token id inválido",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "request_token",
+    "requestId": "a b",
+    "forceRefresh": false
+   },
+   "ok": false
+  },
+  {
+   "name": "request_token sin booleano",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "request_token",
+    "requestId": "t1",
+    "forceRefresh": "no"
+   },
+   "ok": false
+  },
+  {
+   "name": "error",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "error",
+    "code": "network",
+    "message": "sin red"
+   },
+   "ok": true,
+   "type": "error"
+  },
+  {
+   "name": "source ajeno",
+   "input": {
+    "source": "otro",
+    "v": 1,
+    "type": "close",
+    "reason": "x"
+   },
+   "ok": false
+  },
+  {
+   "name": "source del anfitrión (rebote)",
+   "input": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "pause"
+   },
+   "ok": false
+  },
+  {
+   "name": "versión futura",
+   "input": {
+    "source": "customy-stories",
+    "v": 2,
+    "type": "close",
+    "reason": "x"
+   },
+   "ok": false
+  },
+  {
+   "name": "tipo desconocido",
+   "input": {
+    "source": "customy-stories",
+    "v": 1,
+    "type": "exec",
+    "code": "alert(1)"
+   },
+   "ok": false
+  },
+  {
+   "name": "no es objeto",
+   "raw": "[1,2]",
+   "ok": false
+  },
+  {
+   "name": "JSON inválido",
+   "raw": "{nope",
+   "ok": false
+  },
+  {
+   "name": "null",
+   "raw": "null",
+   "ok": false
+  }
+ ],
+ "hostCommands": [
+  {
+   "name": "init",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "init",
+    "config": {
+     "placementId": "home_top",
+     "locale": "es",
+     "theme": "dark",
+     "platform": "android",
+     "appVersion": "1.2.3",
+     "display": "bar",
+     "allowedSchemes": [
+      "myapp"
+     ]
+    }
+   }
+  },
+  {
+   "name": "init mínimo",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "init",
+    "config": {
+     "placementId": "home_top"
+    }
+   }
+  },
+  {
+   "name": "token",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "token",
+    "requestId": "t1abc",
+    "token": "sst_test_token_123456"
+   }
+  },
+  {
+   "name": "token con error",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "token",
+    "requestId": "t1abc",
+    "error": "sin sesión"
+   }
+  },
+  {
+   "name": "pause",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "pause"
+   }
+  },
+  {
+   "name": "resume",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "resume"
+   }
+  },
+  {
+   "name": "destroy",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "destroy"
+   }
+  },
+  {
+   "name": "set_theme",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "set_theme",
+    "theme": "light"
+   }
+  },
+  {
+   "name": "set_locale",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "set_locale",
+    "locale": "es-CO"
+   }
+  },
+  {
+   "name": "permission_result",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "permission_result",
+    "permission": "notifications",
+    "granted": true
+   }
+  },
+  {
+   "name": "open",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "open",
+    "groupId": "g1"
+   }
+  },
+  {
+   "name": "open sin grupo",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "open"
+   }
+  },
+  {
+   "name": "visibility",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "visibility",
+    "visible": false
+   }
+  },
+  {
+   "name": "close_viewer",
+   "json": {
+    "source": "customy-stories-host",
+    "v": 1,
+    "type": "close_viewer"
+   }
+  }
+ ],
+ "jsLiterals": [
+  "simple",
+  "con 'comillas' y \"dobles\"",
+  "salto\nde línea\r\ny tab\t",
+  "</script><script>alert(1)</script>",
+  "  y  ",
+  "barra \\ invertida",
+  "emoji 😀 ñ á",
+  "sst_token.con-guiones_123",
+  "\u0000nulo"
+ ]
+}
