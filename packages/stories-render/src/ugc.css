@@ -1,0 +1,23 @@
+/*
+ * @customyai/stories-render/ugc.css — estilos de las historias de la comunidad (UGC): formulario, «mis historias» y la hoja de
+ * reportar. OPCIONAL y se importa JUNTO a styles.css (de ahí salen los tokens, `.cs-btn` y `.cs-sheet`):
+ *   import "@customyai/stories-render/styles.css"; import "@customyai/stories-render/ugc.css";
+ * Mismas reglas: colores solo de tokens, propiedades lógicas (LTR/RTL).
+ */
+.cs-ugc { display: grid; gap: 10px; color: hsl(var(--cs-fg)); font-size: 14px; }
+.cs-ugc--composer, .cs-ugc--mine { padding: 16px; border-radius: 16px; background: hsl(var(--cs-card)); border: 1px solid hsl(var(--cs-border)); }
+.cs-ugc__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cs-ugc__field { display: grid; gap: 4px; }
+.cs-ugc__field small, .cs-ugc__count, .cs-ugc__chosen, .cs-ugc__reason { color: hsl(var(--cs-muted)); font-size: 12px; }
+.cs-ugc__input { inline-size: 100%; padding: 8px 10px; border: 1px solid hsl(var(--cs-border)); border-radius: 10px; background: hsl(var(--cs-bg)); color: inherit; font: inherit; }
+.cs-ugc__radio { display: flex; align-items: center; gap: 8px; min-block-size: 36px; }
+.cs-ugc__reasons { display: grid; gap: 2px; margin: 0; padding: 0; border: 0; }
+.cs-ugc__status { margin: 0; min-block-size: 18px; font-size: 13px; }
+.cs-ugc__list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.cs-ugc__item { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid hsl(var(--cs-border)); border-radius: 12px; }
+.cs-ugc__item[data-status="rejected"], .cs-ugc__item[data-status="removed"] { border-color: hsl(var(--cs-danger) / .5); }
+.cs-ugc__title, .cs-ugc__reason { margin: 0; }
+.cs-ugc .cs-btn { inline-size: auto; min-block-size: 40px; padding: 0 16px; font: inherit; font-weight: 600; cursor: pointer; }
+.cs-ugc .cs-btn--ghost { background: transparent; color: hsl(var(--cs-fg)); border: 1px solid hsl(var(--cs-border)); box-shadow: none; }
+.cs-ugc .cs-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.cs-ugc :focus-visible { outline: 2px solid hsl(var(--cs-primary)); outline-offset: 2px; }
