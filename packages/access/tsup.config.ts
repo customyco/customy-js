@@ -16,5 +16,6 @@ const shared = {
 // Dos configuraciones sobre el mismo outDir: ninguna limpia (el script build
 // borra dist antes), para no pisar las salidas de la otra.
 export default defineConfig([
-    { ...shared, entry: {"index":"src/index.ts","flags":"src/flags.ts","generated":"src/generated/index.ts"}, clean: false },
+    { ...shared, entry: {"index":"src/index.ts","flags":"src/flags.ts","flags/edge":"src/flags-edge.ts","generated":"src/generated/index.ts"}, clean: false },
+    { ...shared, entry: {"flags/react":"src/flags-react.tsx"}, clean: false, onSuccess: "node scripts/add-use-client.mjs" },
 ]);

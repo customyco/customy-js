@@ -18,6 +18,7 @@
  * Diseño: docs/CUSTOMY_PEOPLE_ROLES_MODEL.md.
  */
 import { z } from "zod";
+import { COMMUNICATION_CHANNELS, COMMUNICATION_PURPOSES, PURPOSE_WILDCARD } from "./communication-consent.js";
 
 // ─── Vocabulario ─────────────────────────────────────────────────────
 
@@ -141,6 +142,52 @@ export const IDENTIFIER_PRIORITY: Readonly<Record<PersonIdentifierType, number>>
   anonymous_id: 9,
   custom: 10,
 };
+
+/**
+ * Tope de identificadores por Persona y tipo (estilo Segment). Se aplica AL
+ * ENLAZAR, nunca al fusionar, y nunca une a dos personas por pasarse del tope.
+ *
+ * - `perApplication`: el tope cuenta por clave de app (`<clave>:<id>`).
+ * - `evictOldest`: al llegar al tope se libera el identificador sin verificar
+ *   más antiguo para hacer sitio; un verificado nunca se libera así. Sin esa
+ *   marca, el nuevo solo entra si es verificado y hay uno sin verificar al que
+ *   sustituir; si no, se rechaza y queda constancia (`identifier_limit`).
+ */
+export type IdentifierLimit = Readonly<{ max: number; perApplication?: boolean; evictOldest?: boolean }>;
+export const IDENTIFIER_LIMIT_DEFAULTS: Readonly<Record<PersonIdentifierType, IdentifierLimit>> = {
+  access_user_id: { max: 1 },
+  application_user_id: { max: 1, perApplication: true },
+  national_id: { max: 2 },
+  tax_id: { max: 2 },
+  email: { max: 5 },
+  phone: { max: 5 },
+  whatsapp_id: { max: 5 },
+  external_crm_id: { max: 10 },
+  loyalty_id: { max: 5 },
+  device_id: { max: 20, evictOldest: true },
+  anonymous_id: { max: 20, evictOldest: true },
+  custom: { max: 20 },
+};
+/** Un inquilino puede subir o bajar el tope, dentro de estos márgenes. */
+export const IDENTIFIER_LIMIT_CEILING = 100;
+
+export const IdentifierLimitsInputSchema = z
+  .object({
+    limits: z.record(PersonIdentifierTypeSchema, z.object({ max: z.number().int().min(1).max(IDENTIFIER_LIMIT_CEILING), evictOldest: z.boolean().optional() }).strict()),
+  })
+  .strict();
+export type IdentifierLimitsInput = z.infer<typeof IdentifierLimitsInputSchema>;
+
+/** Qué pasó con un identificador que no cabía. Nunca lleva el valor. */
+export type IdentifierLimitNote = Readonly<{
+  code: "identifier_limit";
+  type: PersonIdentifierType;
+  limit: number;
+  /** `refused`: no se enlazó; `evicted`: entró y se liberó otro sin verificar. */
+  action: "refused" | "evicted";
+  valueFingerprint: string;
+  evictedFingerprint?: string;
+}>;
 
 /** Valores que nunca unen personas. */
 const BLOCKED_IDENTIFIER_VALUES = new Set([
@@ -743,7 +790,48 @@ export type PersonSummaryView = Readonly<{
   roles: readonly Pick<PersonRoleView, "roleTypeKey" | "label" | "contextKind" | "contextId" | "contextLabel" | "status" | "stage" | "lastActivityAt">[];
   lastActivityAt: string | null;
   createdAt: string;
+  /** Fuerza de relación calculada; `null` mientras no se haya calculado. Aditivo: los clientes viejos la ignoran. */
+  strength?: PersonStrengthSummary | null;
 }>;
+
+// ─── Fuerza de relación calculada ────────────────────────────────────
+
+/**
+ * Etiquetas de la fuerza de relación. La puntuación (0–100) y la etiqueta las
+ * calcula CRM desde las interacciones reales de la persona; no es un campo que
+ * alguien afirme. Ver `docs/CUSTOMY_PEOPLE_ROLES_MODEL.md` («Fuerza de relación»).
+ */
+export const RELATIONSHIP_STRENGTH_LABELS = ["nueva", "tibia", "activa", "fuerte", "dormida"] as const;
+export const RelationshipStrengthLabelSchema = z.enum(RELATIONSHIP_STRENGTH_LABELS);
+export type RelationshipStrengthLabel = z.infer<typeof RelationshipStrengthLabelSchema>;
+
+export const RELATIONSHIP_STRENGTH_FACTOR_KEYS = ["recency", "frequency", "reciprocity", "breadth"] as const;
+export type RelationshipStrengthFactorKey = (typeof RELATIONSHIP_STRENGTH_FACTOR_KEYS)[number];
+
+/** Un factor explicable: `value` (0–100) × `weight` = `contribution` (puntos de la puntuación final). */
+export type RelationshipStrengthFactor = Readonly<{
+  key: RelationshipStrengthFactorKey;
+  weight: number;
+  value: number;
+  contribution: number;
+  /** Datos crudos que lo explican (días desde la última, recuentos, canales…). */
+  detail: Readonly<Record<string, string | number | boolean | null | readonly string[]>>;
+}>;
+
+export type PersonStrengthSummary = Readonly<{
+  score: number;
+  label: RelationshipStrengthLabel;
+}>;
+
+export type PersonStrengthView = PersonStrengthSummary &
+  Readonly<{
+    factors: readonly RelationshipStrengthFactor[];
+    computedAt: string;
+    basedOnLastInteractionAt: string | null;
+  }>;
+
+/** Orden de la lista de personas: por creación (por defecto) o por fuerza de relación. */
+export const PEOPLE_LIST_SORTS = ["created", "strength"] as const;
 
 /** Filtros de la lista de personas: una vista guardada es solo esto. */
 export const PeopleListQuerySchema = z
@@ -757,11 +845,117 @@ export const PeopleListQuerySchema = z
     stage: z.string().max(40).optional(),
     activeWithinDays: z.coerce.number().int().min(1).max(365).optional(),
     inactiveForDays: z.coerce.number().int().min(1).max(3650).optional(),
+    /** Fuerza de relación mínima (0–100). Excluye a quien aún no tiene fuerza calculada. */
+    minStrength: z.coerce.number().int().min(0).max(100).optional(),
+    /** Etiqueta de fuerza; varias separadas por coma (`activa,fuerte`). */
+    strengthLabel: z
+      .string()
+      .max(80)
+      .transform((value) => value.split(",").map((part) => part.trim()).filter(Boolean))
+      .pipe(z.array(RelationshipStrengthLabelSchema).min(1).max(RELATIONSHIP_STRENGTH_LABELS.length))
+      .optional(),
+    sort: z.enum(PEOPLE_LIST_SORTS).optional(),
+    /** Solo aplica con `sort=strength`; por defecto `desc` (las más fuertes primero). */
+    order: z.enum(["asc", "desc"]).optional(),
     limit: z.coerce.number().int().min(1).max(200).default(50),
     cursor: z.string().max(400).optional(),
   })
   .strict();
 export type PeopleListQuery = z.infer<typeof PeopleListQuerySchema>;
+
+// ─── Regla de rol para segmentos y audiencias ────────────────────────
+
+/**
+ * «Tiene un rol así»: la pieza con la que un segmento de CRM o una audiencia
+ * de Data dicen «Usuario de app · Bonu · activo en 30 días».
+ *
+ * Es el mismo vocabulario que `PeopleListQuerySchema` (una vista de Personas
+ * se guarda como segmento sin traducir nada), con dos diferencias:
+ *
+ * - Hace falta `roleTypeKey` o `family`: una regla sin ninguno de los dos
+ *   diría «tiene algún rol», que casi siempre es un descuido.
+ * - Las ventanas de actividad miran la actividad **del rol** (la de esa app),
+ *   no la de la persona: «activo en Bonu» no es «activo en cualquier sitio».
+ *
+ * Sin `status` vale cualquier rol vigente (`pending|active|suspended`), igual
+ * que la lista de Personas; `ended` hay que pedirlo.
+ */
+export const PersonRoleRuleSchema = z
+  .object({
+    roleTypeKey: z.string().regex(PLATFORM_ROLE_TYPE_KEY).optional(),
+    family: PersonRoleFamilySchema.optional(),
+    contextKind: PersonRoleContextKindSchema.optional(),
+    contextId: z.string().trim().min(1).max(200).optional(),
+    status: PersonRoleStatusSchema.optional(),
+    stage: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/).optional(),
+    activeWithinDays: z.number().int().min(1).max(365).optional(),
+    inactiveForDays: z.number().int().min(1).max(3650).optional(),
+  })
+  .strict()
+  .superRefine((rule, ctx) => {
+    if (!rule.roleTypeKey && !rule.family)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["roleTypeKey"], message: "ROLE_RULE_NEEDS_ROLE_OR_FAMILY" });
+    if (rule.activeWithinDays && rule.inactiveForDays)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["inactiveForDays"], message: "ROLE_RULE_ACTIVITY_WINDOWS_EXCLUSIVE" });
+    if (rule.stage && !rule.roleTypeKey)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["stage"], message: "ROLE_RULE_STAGE_NEEDS_ROLE" });
+  });
+export type PersonRoleRule = z.infer<typeof PersonRoleRuleSchema>;
+
+export type PersonRoleRuleIssue = Readonly<{
+  path: "roleTypeKey" | "family" | "contextKind" | "stage";
+  code: "ROLE_TYPE_UNKNOWN" | "ROLE_FAMILY_MISMATCH" | "ROLE_CONTEXT_KIND_MISMATCH" | "ROLE_STAGE_UNKNOWN";
+}>;
+
+/** Lo mínimo de un tipo propio del tenant para validar una regla. */
+export type RoleRuleCatalogEntry = Pick<RoleTypeDefinition, "key" | "family" | "contextKind" | "stages">;
+
+/**
+ * Valida una regla contra el catálogo: los tipos de plataforma siempre; los
+ * propios (`x_…`) contra `tenantRoleTypes` cuando quien valida los conoce
+ * (CRM) y solo por su forma cuando no (Data, que no lee la base de CRM).
+ *
+ * El contexto se compara con el del tipo solo si la regla dice uno distinto
+ * de `none`: «Usuario de app» con contexto «Marca» no puede coincidir nunca, y
+ * un segmento que siempre sale vacío es peor que un error al guardarlo.
+ */
+export function personRoleRuleIssues(
+  rule: PersonRoleRule,
+  options: { tenantRoleTypes?: readonly RoleRuleCatalogEntry[] } = {},
+): PersonRoleRuleIssue[] {
+  const issues: PersonRoleRuleIssue[] = [];
+  if (!rule.roleTypeKey) return issues;
+  const tenant = TENANT_ROLE_TYPE_KEY.test(rule.roleTypeKey);
+  const type: RoleRuleCatalogEntry | undefined = tenant
+    ? options.tenantRoleTypes?.find((entry) => entry.key === rule.roleTypeKey)
+    : getPlatformRoleType(rule.roleTypeKey);
+  if (!type) {
+    // Un tipo propio sin catálogo a mano solo se puede juzgar por su forma.
+    if (!(tenant && options.tenantRoleTypes === undefined)) issues.push({ path: "roleTypeKey", code: "ROLE_TYPE_UNKNOWN" });
+    return issues;
+  }
+  if (rule.family && rule.family !== type.family) issues.push({ path: "family", code: "ROLE_FAMILY_MISMATCH" });
+  if (rule.contextKind && rule.contextKind !== "none" && type.contextKind !== "none" && rule.contextKind !== type.contextKind)
+    issues.push({ path: "contextKind", code: "ROLE_CONTEXT_KIND_MISMATCH" });
+  if (rule.stage && type.stages.length > 0 && !type.stages.includes(rule.stage)) issues.push({ path: "stage", code: "ROLE_STAGE_UNKNOWN" });
+  return issues;
+}
+
+/**
+ * La regla de rol que describe un filtro de Personas, o null si el filtro no
+ * habla de roles. Así «Guardar como segmento» guarda exactamente la vista.
+ */
+export function personRoleRuleFromPeopleQuery(query: Partial<Omit<PeopleListQuery, "limit" | "cursor" | "search">>): PersonRoleRule | null {
+  if (!query.role && !query.family) return null;
+  const rule: Record<string, unknown> = {};
+  for (const key of ["family", "contextKind", "contextId", "status", "stage", "activeWithinDays", "inactiveForDays"] as const) {
+    const value = query[key];
+    if (value !== undefined && value !== null && value !== "") rule[key] = value;
+  }
+  if (query.role) rule.roleTypeKey = query.role;
+  const parsed = PersonRoleRuleSchema.safeParse(rule);
+  return parsed.success ? parsed.data : null;
+}
 
 export type ApplicationUsersSummary = Readonly<{
   applicationKey: string;
@@ -772,6 +966,86 @@ export type ApplicationUsersSummary = Readonly<{
   dormant: number;
   withEmail: number;
   lastActivityAt: string | null;
+}>;
+
+export const APPLICATION_USAGE_GRANULARITIES = ["day", "week", "month"] as const;
+export type ApplicationUsageGranularity = (typeof APPLICATION_USAGE_GRANULARITIES)[number];
+
+/** Un punto de la serie de uso de una app (un día, una semana ISO o un mes calendario, en la zona horaria pedida). */
+export type ApplicationUsagePoint = Readonly<{
+  /** Primer día del periodo (YYYY-MM-DD). */
+  periodStart: string;
+  /** Último día del periodo incluido en la respuesta (el periodo en curso se recorta a `to`). */
+  periodEnd: string;
+  /** Usuarios activos por día: exacto en `day`; media de los días del periodo en `week|month`. */
+  dau: number;
+  /** Usuarios distintos activos en los 7 días que terminan en `periodEnd`. */
+  wau: number;
+  /** Usuarios distintos activos en los 30 días que terminan en `periodEnd`. */
+  mau: number;
+  /** dau / mau del periodo; null si mau = 0. */
+  stickiness: number | null;
+  /** Usuarios distintos con actividad dentro del periodo calendario. */
+  activeUsers: number;
+  newRegistrations: number;
+  events: number;
+}>;
+
+export type ApplicationUsageKind = Readonly<{ kind: string; events: number; users: number }>;
+
+export type ApplicationUsage = Readonly<{
+  applicationKey: string;
+  timeZone: string;
+  granularity: ApplicationUsageGranularity;
+  from: string;
+  to: string;
+  generatedAt: string;
+  /** Último día completo (en la zona horaria) sobre el que se calcula el resumen. */
+  summary: Readonly<{
+    asOf: string;
+    registeredTotal: number;
+    dau: number;
+    wau: number;
+    mau: number;
+    /** Media de DAU de los 30 días que terminan en `asOf`, dividida entre el MAU de `asOf`. */
+    stickiness: number | null;
+  }>;
+  series: readonly ApplicationUsagePoint[];
+  activity: Readonly<{
+    totalEvents: number;
+    /** Tipos de actividad más frecuentes del rango, de mayor a menor. */
+    kinds: readonly ApplicationUsageKind[];
+    /** Eventos de los tipos que no caben en `kinds` (y los sin tipo). */
+    otherEvents: number;
+    /** Cuántos tipos distintos hubo en el rango (ausente en servicios anteriores). */
+    kindsTotal?: number;
+    /** Valor de `kindsOffset` para la página siguiente de `kinds`, o null si no hay más. */
+    kindsNextOffset?: number | null;
+  }>;
+  /** Solo si la consulta pidió filtros: todo el panel cuenta únicamente esa actividad. */
+  filter?: Readonly<{ kinds: readonly string[]; property: Readonly<{ key: string; value: string }> | null }>;
+}>;
+
+export type ApplicationRetentionCohort = Readonly<{
+  /** Primer día del periodo de registro (YYYY-MM-DD). */
+  cohortStart: string;
+  size: number;
+  /** Índice = periodos desde el registro (0 = el mismo). null = ese periodo aún no ha empezado. */
+  retained: readonly (number | null)[];
+  /** retained / size; null si no aplica. */
+  rates: readonly (number | null)[];
+}>;
+
+export type ApplicationRetention = Readonly<{
+  applicationKey: string;
+  timeZone: string;
+  cohort: "week" | "month";
+  periods: number;
+  generatedAt: string;
+  /** Primer día del periodo en curso: su columna es parcial y sigue creciendo. */
+  currentPeriodStart: string;
+  cohorts: readonly ApplicationRetentionCohort[];
+  stickiness: Readonly<{ asOf: string; dau: number; mau: number; ratio: number | null }>;
 }>;
 
 // ─── Contactabilidad: el rol decide la base legal ────────────────────
@@ -799,6 +1073,13 @@ export type ContactabilityInput = Readonly<{
   consents: readonly ConsentSignal[];
   /** Tipos de rol propios del tenant (para política de marketing y base legal). */
   tenantRoleTypes?: readonly Pick<RoleTypeDefinition, "key" | "marketing" | "defaultLegalBasis">[];
+  /**
+   * Veredicto de validación del correo vigente de la persona (`services/contact-validation`
+   * del CRM). Solo se informa cuando corresponde a la dirección actual. Solo PROHÍBE más:
+   * `invalid` corta el correo no transaccional; `risky` corta el de publicidad/ventas/investigación.
+   * Ausente o `valid`/`unknown` = el comportamiento de siempre.
+   */
+  emailVerdict?: "valid" | "risky" | "invalid" | "unknown" | null;
 }>;
 
 export type ContactabilityReason =
@@ -813,6 +1094,8 @@ export type ContactabilityReason =
   | "consent_denied"
   | "consent_missing"
   | "roles_forbid_marketing"
+  | "email_invalid"
+  | "email_risky"
   | "co_ley_2300_window";
 
 export type ContactabilityDecision = Readonly<{
@@ -834,6 +1117,11 @@ export function evaluateContactability(input: ContactabilityInput): Contactabili
   if (input.state === "deceased") return block("person_deceased");
   if (input.state === "erased") return block("person_erased");
   if (input.state === "fraud_suspended" && input.purpose !== "transactional") return block("person_fraud_suspended");
+  // Un correo que no llega o no es fiable no entra a secuencias. Lo transaccional no se toca: lo pide la persona misma.
+  if (input.purpose !== "transactional" && input.channel.split(".")[0]?.toLowerCase() === "email") {
+    if (input.emailVerdict === "invalid") return block("email_invalid");
+    if (input.emailVerdict === "risky" && MARKETING_PURPOSES.includes(input.purpose)) return block("email_risky");
+  }
 
   const windowRules: "co-ley-2300"[] =
     input.country?.toUpperCase() === "CO" && (MARKETING_PURPOSES.includes(input.purpose) || input.purpose === "collections") ? ["co-ley-2300"] : [];
@@ -898,6 +1186,147 @@ export function isMinorFor(birthDate: string | null, country: string | null, tod
   return age < threshold;
 }
 
+// ─── Puerta de contactabilidad en los envíos (Send, Campaigns, Flows) ──
+//
+// Ningún mensaje sale de Customy a una Persona si su contactabilidad por rol no
+// lo permite para ese propósito y canal. CRM decide (`evaluateContactability`
+// con los mismos datos que la ficha) y responde por `/v1/internal/people/contactability`
+// (una) y `/v1/internal/people/contactability/batch` (hasta 500). Send aplica la
+// puerta a todo lo que entrega; Campaigns la enseña en la vista previa.
+
+/** Techo de un lote de contactabilidad (vistas previas de Campaigns). */
+export const PERSON_CONTACTABILITY_BATCH_MAX = 500;
+
+/** Prefijo del código de bloqueo que Send, Campaigns y Flows registran. */
+export const PERSON_NOT_CONTACTABLE = "PERSON_NOT_CONTACTABLE";
+
+export function personNotContactableCode(reason: ContactabilityReason | string): string {
+  return `${PERSON_NOT_CONTACTABLE}:${reason}`;
+}
+
+/** Los identificadores por los que un motor de envío puede buscar a la Persona. */
+export const CONTACTABILITY_IDENTIFIER_TYPES = ["email", "phone", "whatsapp_id", "access_user_id", "application_user_id", "external_crm_id"] as const;
+
+export const PersonContactabilityTenantSchema = z
+  .object({
+    organizationId: z.string().trim().min(1).max(200),
+    projectId: z.string().trim().min(1).max(200),
+    /** Ambiente de CRM (`staging`, `production`…) o id de ambiente de Access: CRM resuelve los dos. */
+    environment: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
+export const PersonContactabilityIdentifierSchema = z
+  .object({ type: z.enum(CONTACTABILITY_IDENTIFIER_TYPES), value: z.string().trim().min(1).max(320) })
+  .strict();
+export type PersonContactabilityIdentifier = z.infer<typeof PersonContactabilityIdentifierSchema>;
+
+const ContactabilityTargetShape = {
+  contactId: z.string().trim().min(1).max(128).optional(),
+  /** Se prueban en orden si no hay `contactId` o no existe en el tenant. */
+  identifier: PersonContactabilityIdentifierSchema.optional(),
+  identifiers: z.array(PersonContactabilityIdentifierSchema).max(5).optional(),
+};
+
+export const PersonContactabilityRequestSchema = z
+  .object({ tenant: PersonContactabilityTenantSchema, purpose: MessagePurposeSchema, channel: z.string().trim().min(1).max(40), ...ContactabilityTargetShape })
+  .strict()
+  .refine((value) => Boolean(value.contactId || value.identifier || value.identifiers?.length), { message: "contactId or identifier is required" });
+export type PersonContactabilityRequest = z.infer<typeof PersonContactabilityRequestSchema>;
+
+export const PersonContactabilityBatchRequestSchema = z
+  .object({
+    tenant: PersonContactabilityTenantSchema,
+    purpose: MessagePurposeSchema,
+    channel: z.string().trim().min(1).max(40),
+    contactIds: z.array(z.string().trim().min(1).max(128)).max(PERSON_CONTACTABILITY_BATCH_MAX).optional(),
+    items: z
+      .array(z.object({ key: z.string().trim().min(1).max(200), ...ContactabilityTargetShape }).strict())
+      .max(PERSON_CONTACTABILITY_BATCH_MAX)
+      .optional(),
+  })
+  .strict()
+  .refine((value) => (value.contactIds?.length ?? 0) + (value.items?.length ?? 0) <= PERSON_CONTACTABILITY_BATCH_MAX, {
+    message: `at most ${PERSON_CONTACTABILITY_BATCH_MAX} people per batch`,
+  });
+export type PersonContactabilityBatchRequest = z.infer<typeof PersonContactabilityBatchRequestSchema>;
+
+export type PersonContactabilityResult = Readonly<{
+  /** `false` = CRM no conoce a esa persona: el envío sigue con las reglas de consentimiento de siempre. */
+  found: boolean;
+  personId: string | null;
+  decision: ContactabilityDecision | null;
+  /** La razón que bloquea en la puerta de envío (ver `contactabilityGateBlock`), o null. */
+  blockedBy: ContactabilityReason | null;
+}>;
+
+export type PersonContactabilityBatchResult = Readonly<{
+  purpose: MessagePurpose;
+  channel: string;
+  results: ReadonlyArray<PersonContactabilityResult & { key: string }>;
+  summary: Readonly<{ total: number; allowed: number; blocked: number; unknown: number; byReason: Readonly<Partial<Record<ContactabilityReason, number>>> }>;
+}>;
+
+/** Solo esto bloquea un mensaje transaccional: lo dispara la propia persona (recibo, código, aviso de cuenta). */
+const TRANSACTIONAL_BLOCKING_REASONS: readonly ContactabilityReason[] = ["person_deceased", "person_erased"];
+
+/**
+ * La razón por la que la puerta de envío bloquea, o null si deja pasar. Es la
+ * decisión del contrato con una sola excepción: un mensaje **transaccional** no
+ * se bloquea por falta de rol de servicio (`no_active_role`) —un recibo o un
+ * código lo pide la persona misma—, solo por persona fallecida o suprimida.
+ */
+export function contactabilityGateBlock(decision: ContactabilityDecision, purpose: MessagePurpose): ContactabilityReason | null {
+  if (decision.allowed) return null;
+  if (purpose === "transactional") return decision.reasons.find((reason) => TRANSACTIONAL_BLOCKING_REASONS.includes(reason)) ?? null;
+  return decision.reasons[0] ?? "consent_missing";
+}
+
+/** Propósitos que, con CRM caído, se aplazan en vez de salir (fallan cerrado). */
+export function contactabilityFailsClosed(purpose: MessagePurpose): boolean {
+  return purpose !== "transactional";
+}
+
+/** Propósito del registro de consentimientos (categoría de Send) → propósito de mensaje. */
+export const MESSAGE_PURPOSE_BY_COMMUNICATION_PURPOSE: Readonly<Record<string, MessagePurpose>> = {
+  marketing: "marketing",
+  sales: "sales_outreach",
+  education: "marketing",
+  event: "marketing",
+  survey: "research",
+  transactional: "transactional",
+  security: "transactional",
+  notification: "service",
+  support: "service",
+  // Plurales con los que Campaigns nombra sus categorías de Send.
+  events: "marketing",
+  surveys: "research",
+  notifications: "service",
+};
+
+const BULK_CATEGORY_ALIASES = new Set(["bulk", "newsletter", "campaign", "promotional", "broadcast", "offers", "promo", "promotions"]);
+
+/**
+ * El propósito de un envío de Send: la categoría (que ES el propósito del
+ * registro de consentimientos, o directamente un propósito de mensaje), luego
+ * la marca transaccional de la categoría registrada y por último el carril.
+ * Sin categoría: `bulk` = marketing; `transactional`/`default` = transaccional
+ * (recibos y avisos por API, como hace la ventana legal).
+ */
+export function messagePurposeForSend(input: { category?: string | null; lane?: "transactional" | "default" | "bulk" | null; categoryTransactional?: boolean | null }): MessagePurpose {
+  const category = String(input.category ?? "").trim().toLowerCase();
+  if (input.lane === "transactional" || input.categoryTransactional === true) return "transactional";
+  if (category) {
+    if ((MESSAGE_PURPOSES as readonly string[]).includes(category)) return category as MessagePurpose;
+    const mapped = MESSAGE_PURPOSE_BY_COMMUNICATION_PURPOSE[category];
+    if (mapped) return mapped;
+    if (BULK_CATEGORY_ALIASES.has(category)) return "marketing";
+    // Una categoría registrada y no transaccional es publicidad (misma regla que la ventana legal).
+    if (input.categoryTransactional === false) return "marketing";
+  }
+  return input.lane === "bulk" ? "marketing" : "transactional";
+}
+
 // ─── Eventos de CRM sobre personas ───────────────────────────────────
 
 export const PERSON_EVENT_TYPES = {
@@ -908,6 +1337,7 @@ export const PERSON_EVENT_TYPES = {
   relationshipEnded: "crm.person.relationship.ended",
   identifierLinked: "crm.person.identifier.linked",
   merged: "crm.person.merged",
+  unmerged: "crm.person.unmerged",
   stateChanged: "crm.person.state.changed",
 } as const;
 
@@ -961,6 +1391,17 @@ export const PersonMergedPayloadSchema = z
   })
   .strict();
 
+/** Una fusión del diario se deshizo: `restoredPersonId` vuelve a ser una Persona aparte de `personId` (la que quedó). */
+export const PersonUnmergedPayloadSchema = z
+  .object({
+    ...PersonEventBase,
+    restoredPersonId: Id,
+    mergeId: Id,
+    reason: z.string().max(200),
+    forced: z.boolean(),
+  })
+  .strict();
+
 export const PersonStateChangedPayloadSchema = z
   .object({
     ...PersonEventBase,
@@ -971,6 +1412,120 @@ export const PersonStateChangedPayloadSchema = z
   .strict();
 
 // ─── Identidad opcional en eventos de apps conectadas ────────────────
+
+/**
+ * Parámetros opcionales de `application.user.activity` (`insight_viewed`
+ * {insight: "spend_trend"}, `ui_clicked` {area, target, item}…): objeto plano de
+ * 1..8 claves `^[a-z][a-z0-9_]{0,31}$`, valores string (1..64, sin saltos de línea),
+ * número finito o booleano, y JSON ≤ 512 bytes. Sin anidados ni arrays. Son
+ * etiquetas de producto, nunca datos personales: la app no debe enviar emails,
+ * nombres ni importes. Ausentes, el evento vale como siempre.
+ */
+export const APPLICATION_ACTIVITY_PROPERTIES_MAX_KEYS = 8;
+export const APPLICATION_ACTIVITY_PROPERTIES_MAX_BYTES = 512;
+const ACTIVITY_PROPERTY_KEY = /^[a-z][a-z0-9_]{0,31}$/;
+export const ApplicationActivityPropertyValueSchema = z.union([
+  z.string().min(1).max(64).refine((value) => !/[\r\n\u2028\u2029]/.test(value), "no line breaks"),
+  z.number().finite(),
+  z.boolean(),
+]);
+export type ApplicationActivityPropertyValue = z.infer<typeof ApplicationActivityPropertyValueSchema>;
+export type ApplicationActivityProperties = Readonly<Record<string, ApplicationActivityPropertyValue>>;
+
+/**
+ * Claves de atribución de marketing que una app envía en `attribution_captured`
+ * (una vez al registrarse) y `session_started` (cuando la sesión llega con UTM):
+ * slugs en minúscula de hasta 64 caracteres. Son etiquetas de campaña, nunca
+ * datos personales. CRM las valida con el mismo esquema y regex de claves que
+ * el resto de parámetros; esta lista solo las nombra para la ficha.
+ */
+export const APPLICATION_ACTIVITY_ATTRIBUTION_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "referrer_host"] as const;
+/** Claves de campaña/oferta dentro de la app (banners, ofertas, notificaciones). */
+export const APPLICATION_ACTIVITY_CAMPAIGN_KEYS = ["campaign", "banner", "offer", "offer_name", "partner", "notification", "channel"] as const;
+/**
+ * Claves de interfaz que una app envía en `ui_clicked`, `ui_changed`, `field_edited`,
+ * `form_submitted`, `app_visibility` y `search_submitted`: `area`, `target`, `item`,
+ * `screen`, `state` (on|off|hidden|visible o el valor elegido), `field` y `eid` (id
+ * estable del elemento, solo para correlacionar; la ficha no lo muestra). Mismo esquema
+ * y sanitizador que el resto: esta lista solo las nombra.
+ */
+export const APPLICATION_ACTIVITY_UI_KEYS = ["area", "target", "item", "screen", "state", "field", "eid"] as const;
+export const APPLICATION_ACTIVITY_ORIGIN_KINDS = ["attribution_captured", "session_started"] as const;
+
+/**
+ * Identificadores de correlación OPCIONALES de `application.user.activity`
+ * (docs/BONU_EVENTS_ECOSYSTEM_PLAN.md B.3/B.4): `sessionId` (sesión de uso),
+ * `anonymousId` (visitante antes de registrarse) y `accountId` (cuenta o grupo
+ * del producto, id opaco). Son slugs de hasta 64 caracteres: nunca un email, un
+ * teléfono ni un nombre. Ausentes, el evento vale como siempre (v1 aditivo).
+ */
+export const APPLICATION_ACTIVITY_CORRELATION_ID_MAX = 64;
+export const ApplicationActivityCorrelationIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/, "slug of at most 64 characters");
+export type ApplicationActivityCorrelationId = z.infer<typeof ApplicationActivityCorrelationIdSchema>;
+export const APPLICATION_ACTIVITY_CORRELATION_KEYS = ["sessionId", "anonymousId", "accountId"] as const;
+export type ApplicationActivityCorrelation = Readonly<Partial<Record<(typeof APPLICATION_ACTIVITY_CORRELATION_KEYS)[number], string>>>;
+
+const byteLength = (value: string) => new TextEncoder().encode(value).length;
+
+export const ApplicationActivityPropertiesSchema = z
+  .record(ApplicationActivityPropertyValueSchema)
+  .superRefine((value, ctx) => {
+    const keys = Object.keys(value);
+    if (keys.length > APPLICATION_ACTIVITY_PROPERTIES_MAX_KEYS) ctx.addIssue({ code: "custom", message: `at most ${APPLICATION_ACTIVITY_PROPERTIES_MAX_KEYS} keys` });
+    for (const key of keys) if (!ACTIVITY_PROPERTY_KEY.test(key)) ctx.addIssue({ code: "custom", message: `invalid key ${key}` });
+    if (byteLength(JSON.stringify(value)) > APPLICATION_ACTIVITY_PROPERTIES_MAX_BYTES) ctx.addIssue({ code: "custom", message: `at most ${APPLICATION_ACTIVITY_PROPERTIES_MAX_BYTES} bytes` });
+  });
+
+/**
+ * Señal de segmento `app.activity`: «hizo <kind> en <app>» con filtros opcionales
+ * de propiedad. La regla describe QUÉ actividad; el operador (`did`, `did_not`,
+ * `at_least`, `at_most`), la ventana (`withinDays`) y el recuento (`count`) los
+ * pone la condición del segmento, igual que en las señales de campañas y flujos.
+ *
+ * - `kinds`: uno o varios tipos de actividad (`expense_logged`…). Ausente = cualquier
+ *   actividad de la app.
+ * - `properties`: hasta 5 filtros `properties.<clave>`; cada uno con un valor
+ *   (igualdad) o varios (`in`). Todos deben cumplirse (AND) sobre el mismo evento.
+ */
+export const APP_ACTIVITY_RULE_MAX_KINDS = 10;
+export const APP_ACTIVITY_RULE_MAX_PROPERTIES = 5;
+export const APP_ACTIVITY_RULE_MAX_VALUES = 10;
+export const AppActivityRuleSchema = z
+  .object({
+    applicationKey: z.string().regex(/^[a-z][a-z0-9-]{1,38}[a-z0-9]$/),
+    kinds: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)).min(1).max(APP_ACTIVITY_RULE_MAX_KINDS).optional(),
+    properties: z
+      .array(
+        z
+          .object({
+            key: z.string().regex(ACTIVITY_PROPERTY_KEY),
+            values: z.array(ApplicationActivityPropertyValueSchema).min(1).max(APP_ACTIVITY_RULE_MAX_VALUES),
+          })
+          .strict(),
+      )
+      .max(APP_ACTIVITY_RULE_MAX_PROPERTIES)
+      .optional(),
+  })
+  .strict();
+export type AppActivityRule = z.infer<typeof AppActivityRuleSchema>;
+
+/**
+ * Lectura tolerante: conserva solo lo que cumple el contrato (CRM no falla un
+ * evento por sus parámetros). Devuelve `null` si no queda ninguno.
+ */
+export function sanitizeApplicationActivityProperties(raw: unknown): ApplicationActivityProperties | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out: Record<string, ApplicationActivityPropertyValue> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Object.keys(out).length >= APPLICATION_ACTIVITY_PROPERTIES_MAX_KEYS) break;
+    if (!ACTIVITY_PROPERTY_KEY.test(key)) continue;
+    const parsed = ApplicationActivityPropertyValueSchema.safeParse(value);
+    if (!parsed.success) continue;
+    if (byteLength(JSON.stringify({ ...out, [key]: parsed.data })) > APPLICATION_ACTIVITY_PROPERTIES_MAX_BYTES) continue;
+    out[key] = parsed.data;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
 
 /**
  * Bloque de identidad que una app conectada puede enviar con
@@ -992,3 +1547,319 @@ export const ConnectedApplicationUserIdentitySchema = z
   })
   .strict();
 export type ConnectedApplicationUserIdentity = z.infer<typeof ConnectedApplicationUserIdentitySchema>;
+
+// ─── Consentimientos propios de una app conectada ───────────────────
+
+/**
+ * Lo que la persona decidió en la app (casilla de ofertas al registrarse, el
+ * interruptor del perfil, un banner), con la evidencia de lo que se le mostró.
+ * Viaja en `application.user.consent_updated` y CRM lo escribe en su registro
+ * de consentimientos (`crm_contact_channel_preferences` + eventos), que es el
+ * sistema de registro (docs/CUSTOMY_COMMUNICATION_PREFERENCES.md).
+ *
+ * Vocabulario: el ÚNICO de Customy (`communication-consent.ts`). Propósito y
+ * canal son los del registro; `*` solo retira o deniega (un permiso se da por
+ * canal, con su texto). Base legal: siempre `consent`. Sin datos personales.
+ */
+export const CONNECTED_APPLICATION_CONSENT_STATUSES = ["granted", "denied", "withdrawn"] as const;
+export type ConnectedApplicationConsentStatus = (typeof CONNECTED_APPLICATION_CONSENT_STATUSES)[number];
+/** Dónde lo decidió la persona dentro de la app. */
+export const CONNECTED_APPLICATION_CONSENT_SOURCES = ["signup", "profile", "banner", "import"] as const;
+export type ConnectedApplicationConsentSource = (typeof CONNECTED_APPLICATION_CONSENT_SOURCES)[number];
+export const CONNECTED_APPLICATION_CONSENT_MAX = 20;
+
+export const ConnectedApplicationConsentSchema = z
+  .object({
+    purpose: z.union([z.enum(COMMUNICATION_PURPOSES), z.literal(PURPOSE_WILDCARD)]),
+    channel: z.union([z.enum(COMMUNICATION_CHANNELS), z.literal("*")]),
+    status: z.enum(CONNECTED_APPLICATION_CONSENT_STATUSES),
+    /** Cuándo lo decidió la persona (ISO 8601). */
+    capturedAt: z.string().datetime({ offset: true }),
+    /** Versión del texto mostrado (p. ej. `offers-2026-09`). */
+    textVersion: z.string().min(1).max(64).regex(/^[\x21-\x7e]+$/, "visible ASCII, no spaces"),
+    /** sha256 hex del texto exacto mostrado. */
+    textHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    source: z.enum(CONNECTED_APPLICATION_CONSENT_SOURCES),
+    legalBasis: z.literal("consent"),
+  })
+  .strict()
+  .refine((consent) => consent.status !== "granted" || (consent.channel !== "*" && consent.purpose !== PURPOSE_WILDCARD), {
+    message: "a grant names one purpose and one channel; \"*\" only denies or withdraws",
+    path: ["channel"],
+  });
+export type ConnectedApplicationConsent = z.infer<typeof ConnectedApplicationConsentSchema>;
+
+/**
+ * Consentimiento de ANALYTICS de una app conectada (plan de eventos, WS-H.1).
+ *
+ * Es OTRA cosa que los consentimientos de comunicación de arriba: autoriza que
+ * Customy guarde y analice la actividad del usuario en la app, no que le
+ * escriba. Por eso:
+ *  - la finalidad es `analytics`, que NO es una finalidad de comunicación (no está
+ *    en `COMMUNICATION_PURPOSES`) y nunca entra en la puerta de contactabilidad;
+ *  - no lleva canal (no hay a quién escribir) ni `*`;
+ *  - solo `granted | denied | withdrawn`, con la evidencia: versión del texto
+ *    mostrado, su hash, dónde lo decidió y cuándo.
+ * Aditivo: un `consent_updated` sin esta finalidad vale exactamente como antes.
+ * Orden de despliegue: CRM (y todo lo que valida el contrato) antes de que una app
+ * envíe `analytics`, porque un consumidor sin este contrato rechazaría el evento.
+ */
+export const ANALYTICS_CONSENT_PURPOSE = "analytics" as const;
+export const ConnectedApplicationAnalyticsConsentSchema = z
+  .object({
+    purpose: z.literal(ANALYTICS_CONSENT_PURPOSE),
+    status: z.enum(CONNECTED_APPLICATION_CONSENT_STATUSES),
+    /** Cuándo lo decidió la persona (ISO 8601). */
+    capturedAt: z.string().datetime({ offset: true }),
+    /** Versión del texto mostrado (p. ej. `analytics-2026-10`). */
+    textVersion: z.string().min(1).max(64).regex(/^[\x21-\x7e]+$/, "visible ASCII, no spaces"),
+    /** sha256 hex del texto exacto mostrado. */
+    textHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    source: z.enum(CONNECTED_APPLICATION_CONSENT_SOURCES),
+    legalBasis: z.literal("consent"),
+  })
+  .strict();
+export type ConnectedApplicationAnalyticsConsent = z.infer<typeof ConnectedApplicationAnalyticsConsentSchema>;
+
+/** Una decisión de `consent_updated`: de comunicación (como siempre) o de analytics. */
+export type ConnectedApplicationConsentItem = ConnectedApplicationConsent | ConnectedApplicationAnalyticsConsent;
+
+export const ConnectedApplicationConsentsSchema = z
+  .array(z.union([ConnectedApplicationConsentSchema, ConnectedApplicationAnalyticsConsentSchema]))
+  .min(1)
+  .max(CONNECTED_APPLICATION_CONSENT_MAX);
+
+export function isAnalyticsConsent(consent: ConnectedApplicationConsentItem): consent is ConnectedApplicationAnalyticsConsent {
+  return consent.purpose === ANALYTICS_CONSENT_PURPOSE;
+}
+
+/** Separa las decisiones de un `consent_updated`: las de comunicación y las de analytics. */
+export function splitApplicationConsents(consents: readonly ConnectedApplicationConsentItem[] | undefined): {
+  communication: ConnectedApplicationConsent[];
+  analytics: ConnectedApplicationAnalyticsConsent[];
+} {
+  const communication: ConnectedApplicationConsent[] = [];
+  const analytics: ConnectedApplicationAnalyticsConsent[] = [];
+  for (const consent of consents ?? []) {
+    if (isAnalyticsConsent(consent)) analytics.push(consent);
+    else communication.push(consent);
+  }
+  return { communication, analytics };
+}
+
+/** Estado de analytics de una Persona en una app (`GET /v1/people/:id/analytics-consent`). */
+export const PERSON_ANALYTICS_CONSENT_STATUSES = ["granted", "denied", "withdrawn", "not_set"] as const;
+export type PersonAnalyticsConsentStatus = (typeof PERSON_ANALYTICS_CONSENT_STATUSES)[number];
+export type PersonAnalyticsConsentApplication = Readonly<{
+  applicationKey: string;
+  status: PersonAnalyticsConsentStatus;
+  effectiveAt: string | null;
+  textVersion: string | null;
+  textHash: string | null;
+  source: ConnectedApplicationConsentSource | null;
+  history: ReadonlyArray<{ status: Exclude<PersonAnalyticsConsentStatus, "not_set">; capturedAt: string; textVersion: string; disposition: "applied" | "superseded" }>;
+}>;
+export type PersonAnalyticsConsent = Readonly<{
+  /** `CRM_ENFORCE_ANALYTICS_CONSENT` encendida: sin `granted`, CRM no guarda las `properties` de la actividad. */
+  enforced: boolean;
+  applications: readonly PersonAnalyticsConsentApplication[];
+}>;
+
+// ─── Fusiones reversibles (diario de fusiones) ───────────────────────
+
+export const UnmergePersonInputSchema = z
+  .object({
+    mergeId: Id,
+    /** Deshacer aunque lo fusionado se haya movido después: decisión de un operador. */
+    force: z.boolean().default(false),
+    reason: z.string().min(1).max(200).default("manual"),
+  })
+  .strict();
+export type UnmergePersonInput = z.infer<typeof UnmergePersonInputSchema>;
+
+/** Una línea del historial de fusiones de una Persona (`GET /v1/people/:id/merges`). */
+export type PersonMergeView = Readonly<{
+  id: string;
+  kind: "merge" | "unmerge";
+  survivorId: string;
+  absorbedId: string;
+  reason: string;
+  actor: string | null;
+  forced: boolean;
+  createdAt: string;
+  /** Cuánto se movió, por tabla. */
+  counts: Readonly<Record<string, { moved: number; deleted: number; created: number }>>;
+  /** Solo en `kind: "merge"`: ya se deshizo. */
+  undone: boolean;
+  undoneAt: string | null;
+  /** Solo en `kind: "unmerge"`: la fusión que deshizo. */
+  reversesMergeId: string | null;
+  /** Se puede deshacer ahora (fusión del diario, sin deshacer y con la Persona consultada como superviviente). */
+  undoable: boolean;
+}>;
+
+// ─── Salud de la identidad (B.6) ─────────────────────────────────────
+
+/** `GET /v1/people/identity-health`: umbrales de la comprobación de integridad (solo lectura). */
+export const IdentityHealthQuerySchema = z
+  .object({
+    /** Identificadores del mismo tipo (y de la misma app, en `application_user_id`) a partir de los cuales una persona se lista. */
+    maxPerType: z.coerce.number().int().min(1).max(100).default(3),
+    /** Ventana de fusiones recientes, en días. */
+    mergeWindowDays: z.coerce.number().int().min(1).max(90).default(7),
+    /** Fusiones no deshechas en la ventana sobre una misma superviviente para marcarla. */
+    mergeBurst: z.coerce.number().int().min(2).max(100).default(5),
+    /** Identificadores movidos por una sola fusión a partir de los cuales se marca. */
+    mergeMovedIdentifiers: z.coerce.number().int().min(1).max(100).default(5),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+  })
+  .strict();
+export type IdentityHealthQuery = z.infer<typeof IdentityHealthQuerySchema>;
+
+export type IdentityCrowdedPerson = Readonly<{
+  personId: string;
+  type: string;
+  /** Solo en `application_user_id`: la app a la que pertenecen los identificadores. */
+  applicationKey: string | null;
+  count: number;
+}>;
+
+export type IdentityAnomalousMerge = Readonly<{
+  mergeId: string;
+  survivorId: string;
+  absorbedId: string;
+  createdAt: string;
+  actor: string | null;
+  reason: string;
+  forced: boolean;
+  identifiersMoved: number;
+  /** `forced`, `many_identifiers` (una fusión que movió muchos), `burst` (la superviviente absorbió muchas en la ventana). */
+  flags: readonly ("forced" | "many_identifiers" | "burst")[];
+}>;
+
+export type IdentityHealth = Readonly<{
+  generatedAt: string;
+  thresholds: Readonly<Omit<IdentityHealthQuery, "limit">>;
+  crowdedPeople: readonly IdentityCrowdedPerson[];
+  anomalousMerges: readonly IdentityAnomalousMerge[];
+  /** Se llegó al `limit` en alguna lista: hay más de lo que se muestra. */
+  truncated: Readonly<{ crowdedPeople: boolean; anomalousMerges: boolean }>;
+}>;
+
+// ─── Actividad en apps conectadas, por Persona ───────────────────────
+
+/** Tipo de un evento del ciclo de vida de un usuario de app, tal como lo muestra la ficha de la Persona. */
+export const PERSON_APP_ACTIVITY_TYPES = ["registered", "activity", "identity_updated", "consent_updated", "deleted"] as const;
+export type PersonAppActivityType = (typeof PERSON_APP_ACTIVITY_TYPES)[number];
+
+export const PERSON_APP_ACTIVITY_MAX_LIMIT = 100;
+
+/** `GET /v1/people/:id/app-activity`: cursor opaco por (occurred_at, event_id) descendente. */
+export const PersonAppActivityQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(PERSON_APP_ACTIVITY_MAX_LIMIT).default(20),
+    before: z.string().min(1).max(200).optional(),
+    applicationKey: z.string().regex(/^[a-z][a-z0-9-]{1,38}[a-z0-9]$/).optional(),
+  })
+  .strict();
+export type PersonAppActivityQuery = z.infer<typeof PersonAppActivityQuerySchema>;
+
+export type PersonAppActivityApplication = Readonly<{
+  applicationKey: string;
+  registeredAt: string | null;
+  lastActivityAt: string | null;
+  counts: Readonly<Record<string, number>>;
+}>;
+
+export type PersonAppActivityItem = Readonly<{
+  id: string;
+  applicationKey: string;
+  type: PersonAppActivityType;
+  /** Tipo de actividad (`expense_logged`…) solo en `activity`; nunca datos del usuario. */
+  kind: string | null;
+  /** Parámetros de la actividad (`{ insight: "spend_trend" }`) o null si no trae; solo en `activity`. */
+  properties: ApplicationActivityProperties | null;
+  occurredAt: string;
+}>;
+
+/** Un toque de atribución: de qué campaña/fuente/medio llegó la persona a la app. */
+export type PersonAppOriginTouch = Readonly<{
+  applicationKey: string;
+  occurredAt: string;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+  utmTerm: string | null;
+  referrerHost: string | null;
+}>;
+
+/** Origen de la persona: primer toque (el del registro) y último (la sesión más reciente con UTM). */
+export type PersonAppOrigin = Readonly<{ first: PersonAppOriginTouch | null; last: PersonAppOriginTouch | null }>;
+
+/** Etapas de ciclo de vida de una Persona en una app (plan de eventos, WS-F.2). */
+export const PERSON_APP_LIFECYCLE_STAGES = ["new", "activated", "habit", "at_risk", "dormant", "recovered"] as const;
+export type PersonAppLifecycleStage = (typeof PERSON_APP_LIFECYCLE_STAGES)[number];
+
+/** La etapa calculada de la Persona en una app, con las señales que la explican (reglas versionadas). */
+export type PersonAppLifecycle = Readonly<{
+  applicationKey: string;
+  stage: PersonAppLifecycleStage;
+  previousStage: PersonAppLifecycleStage | null;
+  /** Desde cuándo está en la etapa (aproximado: el día en que se cumplió la regla). */
+  since: string | null;
+  rulesVersion: number;
+  computedAt: string;
+  signals: Readonly<Record<string, unknown>>;
+}>;
+
+export type PersonAppActivity = Readonly<{
+  applications: readonly PersonAppActivityApplication[];
+  items: readonly PersonAppActivityItem[];
+  nextCursor: string | null;
+  /** Solo en la primera página (sin cursor); ausente si el servicio es anterior. */
+  origin?: PersonAppOrigin | null;
+  /** Solo en la primera página; ausente si el servicio es anterior o aún no se ha calculado. */
+  lifecycle?: readonly PersonAppLifecycle[];
+}>;
+
+/** Un mensaje de Customy (correo, push, WhatsApp, in-app) recibido por una Persona: una fila por envío (corrida de canal). */
+export type PersonMessage = Readonly<{
+  id: string;
+  campaignId: string;
+  /** Nombre de la campaña; en mensajes de un flow es la campaña dueña del mensaje. */
+  campaignName: string | null;
+  /** Id del flow cuando el mensaje lo envió un flow; el nombre lo resuelve la ficha. */
+  flowId: string | null;
+  channel: string;
+  provider: string | null;
+  /** Estado más avanzado: sent, delivered, opened, clicked, replied, bounced, failed, unsubscribed, complained… */
+  status: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  openedAt: string | null;
+  clickedAt: string | null;
+  repliedAt: string | null;
+  bouncedAt: string | null;
+  failedAt: string | null;
+  openCount: number;
+  clickCount: number;
+  /** Enlaces pulsados, sin querystring ni fragmento. */
+  clickedLinks: readonly string[];
+  reason: string | null;
+  lastEventAt: string;
+}>;
+
+export type PersonMessages = Readonly<{ items: readonly PersonMessage[]; nextCursor: string | null }>;
+
+/** `https://x.com/p?token=1#a` → `https://x.com/p`; solo http(s); otro esquema o texto no URL → null. Nunca devuelve credenciales ni querystring. */
+export function sanitizeMessageLinkUrl(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const url = new URL(raw.trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return `${url.protocol}//${url.host}${url.pathname === "/" ? "" : url.pathname}`.slice(0, 200);
+  } catch {
+    return null;
+  }
+}

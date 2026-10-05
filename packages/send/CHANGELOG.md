@@ -1,5 +1,15 @@
 # @customyai/send
 
+## 0.7.0
+
+### Minor Changes
+
+- Customy Stories desde el servidor del cliente: `send.stories.conversion(input)` reporta una compra con su importe (`POST /api/stories/conversions`), que es la única vía por la que entra un importe a la atribución de ingresos de una story. La app del usuario solo manda una señal de compra sin importe (auditoría de seguridad de Stories, A-1), así que quien medía ingresos con el SDK de la app debe pasar ese reporte a su backend.
+
+  - `StoryConversionInput` (`event_id` idempotente, `subscriber`, `value` en unidad menor como texto, `currency` ISO, `order_id`, `products`, `story_id`, `slide_id`, `component_id`, `utm`), `StoryConversionProduct` y `StoryConversion`.
+  - Pide el alcance `stories:convert` (en un token de máquina, `send:stories:convert`, ya en `SEND_SCOPES`); `stories:manage` no lo implica. 503 `commerce_unavailable` si el puente con Commerce está apagado: reintenta.
+  - `@customyai/sdk` lo trae en `customy.send.stories.conversion` y reexporta los tipos.
+
 ## 0.6.0
 
 ### Minor Changes

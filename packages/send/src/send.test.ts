@@ -133,6 +133,19 @@ describe("@customyai/send", () => {
     expect(JSON.parse(calls[0]!.body!)).toEqual({ recall: true });
   });
 
+  it("stories.conversion: la compra con importe llega a POST /api/stories/conversions, con su clave de idempotencia y el alcance propio", async () => {
+    const { fetch, calls } = scripted([json(202, { object: "story_conversion", accepted: true, event_id: "ord_1001_paid" }), json(503, { name: "commerce_unavailable", message: "commerce is not connected" })]);
+    const send = createSend({ baseUrl: BASE, accessToken: "cs_test_x", fetch, retry: { maxRetries: 0 } });
+    const out = await send.stories.conversion({ event_id: "ord_1001_paid", subscriber: "cust_77", value: "4599000", currency: "COP", order_id: "1001", products: [{ product: { connector: "shopify", external_id: "788" }, quantity: 2 }], story_id: "verano", utm: { utm_source: "stories" } });
+    expect(out).toEqual({ object: "story_conversion", accepted: true, event_id: "ord_1001_paid" });
+    expect(`${calls[0]!.method} ${new URL(calls[0]!.url).pathname}`).toBe("POST /api/stories/conversions");
+    expect(JSON.parse(calls[0]!.body!)).toMatchObject({ event_id: "ord_1001_paid", subscriber: "cust_77", value: "4599000", currency: "COP", story_id: "verano" });
+    expect(calls[0]!.headers["idempotency-key"] ?? calls[0]!.headers["Idempotency-Key"]).toBeTruthy();
+    // El puente de Commerce apagado es un error tipado que se reintenta, no una compra perdida.
+    await expect(send.stories.conversion({ event_id: "ord_1002_paid", subscriber: "cust_77", value: "100", currency: "COP" })).rejects.toMatchObject({ code: "commerce_unavailable" });
+    expect(SEND_SCOPES).toContain("send:stories:convert");
+  });
+
   it("plan, alcance y envío a una audiencia con la decisión; 409 plan_required trae el plan en `body`", async () => {
     const plan = { object: "notification_plan", plan_hash: "pln_abc12345", decision: "partial", options: [{ id: "respect_quiet_hours" }] };
     const { fetch, calls } = scripted([

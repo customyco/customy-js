@@ -127,6 +127,21 @@ describe("customy.apps (Connected Application → Events)", () => {
         expect(calls).toHaveLength(0);
     });
 
+    it("activity lleva properties y los ids de correlación opcionales, y sin ellos el sobre no cambia", async () => {
+        const { calls, fetchImpl } = events();
+        const app = createConnectedApp(config(fetchImpl));
+        await app.activity({ userId: USER, kind: "ui_clicked", properties: { area: "insights", target: "card" }, sessionId: "sess_1", anonymousId: "anon_1", accountId: "acc_1" });
+        await app.activity({ userId: USER, kind: "signed_in" });
+        expect(calls[0]!.body.payload).toEqual({ schemaVersion: 1, applicationKey: "bonu", applicationUserId: USER, accessEnvironmentId: "env_1", kind: "ui_clicked",
+            properties: { area: "insights", target: "card" }, sessionId: "sess_1", anonymousId: "anon_1", accountId: "acc_1" });
+        expect(calls[1]!.body.payload).toEqual({ schemaVersion: 1, applicationKey: "bonu", applicationUserId: USER, accessEnvironmentId: "env_1", kind: "signed_in" });
+        await expect(app.activity({ userId: USER, kind: "x", sessionId: "has space" })).rejects.toMatchObject({ code: "SDK_INPUT_INVALID" });
+        await expect(app.activity({ userId: USER, kind: "x", accountId: "a".repeat(65) })).rejects.toMatchObject({ code: "SDK_INPUT_INVALID" });
+        // @ts-expect-error: propiedades anidadas fuera del contrato
+        await expect(app.activity({ userId: USER, kind: "x", properties: { nested: { a: 1 } } })).rejects.toMatchObject({ code: "SDK_INPUT_INVALID" });
+        expect(calls).toHaveLength(2);
+    });
+
     it("batch envía en orden con concurrencia limitada y devuelve un resultado por evento", async () => {
         const { calls, fetchImpl } = events((call) =>
             call.body.type === "application.user.deleted"
@@ -164,5 +179,54 @@ describe("customy.apps (Connected Application → Events)", () => {
         expect(customy.apps).toBe(customy.apps);
         const bare = await createCustomy(base);
         expect(() => bare.apps).toThrow(expect.objectContaining({ code: "SDK_APPS_NOT_CONFIGURED" }));
+    });
+
+    describe("consentUpdated", () => {
+        const consent = { purpose: "marketing", channel: "email", status: "granted", capturedAt: "2026-09-28T11:59:00.000Z",
+            textVersion: "offers-2026-09", textHash: "d".repeat(64), source: "signup", legalBasis: "consent" } as const;
+
+        it("envía application.user.consent_updated con las decisiones y su evidencia, sin datos personales", async () => {
+            const { calls, fetchImpl } = events();
+            const app = createConnectedApp(config(fetchImpl));
+            const receipt = await app.consentUpdated({ userId: USER, consents: [consent] });
+            const body = calls[0]!.body;
+            expect(body).toMatchObject({ type: "application.user.consent_updated", version: "v1", source: "bonu", tenantId: "org_1:prj_1:staging",
+                partitionKey: USER, eventId: expect.stringMatching(UUID), occurredAt: AT.toISOString(),
+                payload: { schemaVersion: 1, applicationKey: "bonu", applicationUserId: USER, accessEnvironmentId: "env_1", consents: [consent] } });
+            expect(Object.keys(body.payload).sort()).toEqual(["accessEnvironmentId", "applicationKey", "applicationUserId", "consents", "schemaVersion"]);
+            expect(body.idempotencyKey).toMatch(new RegExp(`^bonu:user:consent_updated:${USER}:[0-9a-f-]{36}$`));
+            expect(receipt.idempotencyKey).toBe(body.idempotencyKey);
+        });
+
+        it("la clave sale de las decisiones: el mismo cambio se deduplica, otro cambio no", async () => {
+            const { fetchImpl } = events();
+            const a = createConnectedApp(config(fetchImpl, { now: () => new Date("2026-09-28T12:00:00Z") }));
+            const b = createConnectedApp(config(fetchImpl, { now: () => new Date("2026-09-28T12:05:00Z") }));
+            const first = await a.envelopes.consentUpdated({ userId: USER, consents: [consent] });
+            const retry = await b.envelopes.consentUpdated({ userId: USER, consents: [consent] });
+            const withdrawn = await a.envelopes.consentUpdated({ userId: USER, consents: [{ ...consent, status: "withdrawn", capturedAt: "2026-09-28T13:00:00.000Z" }] });
+            expect(retry.idempotencyKey).toBe(first.idempotencyKey);
+            expect(retry.eventId).toBe(first.eventId);
+            expect(withdrawn.idempotencyKey).not.toBe(first.idempotencyKey);
+        });
+
+        it("valida con el contrato antes de enviar", async () => {
+            const { calls, fetchImpl } = events();
+            const app = createConnectedApp(config(fetchImpl));
+            for (const consents of [[], [{ ...consent, purpose: "offers" }], [{ ...consent, channel: "*" }], [{ ...consent, textVersion: "x".repeat(65) }],
+                [{ ...consent, legalBasis: "contract" }], [{ ...consent, email: "ana@example.com" }], Array.from({ length: 21 }, () => consent)]) {
+                await expect(app.consentUpdated({ userId: USER, consents: consents as never })).rejects.toMatchObject({ code: "SDK_INPUT_INVALID", service: "events" });
+            }
+            await expect(app.consentUpdated({ userId: USER, consents: [{ ...consent, channel: "*", status: "withdrawn" }] })).resolves.toMatchObject({ accepted: true });
+            expect(calls).toHaveLength(1);
+        });
+
+        it("entra en batch", async () => {
+            const { calls, fetchImpl } = events();
+            const app = createConnectedApp(config(fetchImpl));
+            const results = await app.batch([{ type: "consent_updated", input: { userId: USER, consents: [consent] } }]);
+            expect(results[0]).toMatchObject({ ok: true });
+            expect(calls[0]!.body.type).toBe("application.user.consent_updated");
+        });
     });
 });

@@ -1,5 +1,78 @@
 # @customyai/sdk
 
+## 0.13.0
+
+### Minor Changes
+
+- Customy Stories desde el servidor del cliente: `send.stories.conversion(input)` reporta una compra con su importe (`POST /api/stories/conversions`), que es la única vía por la que entra un importe a la atribución de ingresos de una story. La app del usuario solo manda una señal de compra sin importe (auditoría de seguridad de Stories, A-1), así que quien medía ingresos con el SDK de la app debe pasar ese reporte a su backend.
+
+  - `StoryConversionInput` (`event_id` idempotente, `subscriber`, `value` en unidad menor como texto, `currency` ISO, `order_id`, `products`, `story_id`, `slide_id`, `component_id`, `utm`), `StoryConversionProduct` y `StoryConversion`.
+  - Pide el alcance `stories:convert` (en un token de máquina, `send:stories:convert`, ya en `SEND_SCOPES`); `stories:manage` no lo implica. 503 `commerce_unavailable` si el puente con Commerce está apagado: reintenta.
+  - `@customyai/sdk` lo trae en `customy.send.stories.conversion` y reexporta los tipos.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/send@0.7.0
+
+## 0.12.0
+
+### Minor Changes
+
+- Los consentimientos de los eventos de usuario de una aplicación usan ahora el tipo `ConnectedApplicationConsentItem` (cada consentimiento con su finalidad, canal y texto), y el SDK lo exporta junto a `ConnectedApplicationConsent`.
+
+## 0.11.0
+
+### Minor Changes
+
+- `customy.apps.activity()` acepta `properties` (hasta 8 etiquetas planas, validadas con el contrato) y los identificadores de correlación opcionales `sessionId`, `anonymousId` y `accountId` (slugs de hasta 64 caracteres; `accountId` es un id opaco de cuenta o grupo). Son aditivos: sin ellos el sobre es idéntico al de antes (`v1`). Requiere Events con el contrato `application.user.activity` ampliado (CRM y Data primero).
+
+## 0.10.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.5.0
+
+## 0.10.0
+
+### Minor Changes
+
+- Contrato del evaluador (D6): `EvaluationDetail` añade `reasonCode` (`default | off | killed | prerequisite_failed | rule:<id> | rollout | segment:<key> | error`) y `bucketBp` (0..9999). `reason` y `bucket` no cambian. Nuevos `createDependencies` (prerrequisitos con ciclo y profundidad máxima), `LEGACY_REASON_ALIASES` y tope de 512 caracteres para `regex`.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.4.0
+
+## 0.9.0
+
+### Minor Changes
+
+- Customy Provisioning para usuarios de PRUEBA: `@customyai/provisioning` (cliente sobre `@customyai/core` con token de máquina en memoria, `Customy-Environment` en cada petición, `Idempotency-Key` estable en reintentos, errores tipados y redacción de secretos), `createProvisioning`, el namespace `provisioning` y `@customyai/sdk/testing` (`withEphemeralUsers`) en `@customyai/sdk`, y los comandos `customy users | audit | policy | whoami | login` en `@customyai/cli`.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/provisioning@0.1.0
+
+## 0.8.0
+
+### Minor Changes
+
+- `customy.apps.consentUpdated({ userId, consents })` (y `envelopes.consentUpdated`, `batch` con `type: "consent_updated"`): emite `application.user.consent_updated` con los consentimientos que la persona dio, negó o retiró en la app —propósito y canal del vocabulario único de Customy, `status` `granted | denied | withdrawn`, `capturedAt`, `textVersion`, `textHash` opcional, `source` `signup | profile | banner | import` y `legalBasis: "consent"`— validados con el contrato antes de enviar. CRM los escribe en su registro de consentimientos y la contactabilidad los refleja al momento. La clave de idempotencia sale de las decisiones. Se exportan `UserConsentUpdatedInput`, `ConnectedApplicationConsent` y sus constantes.
+
+## 0.7.0
+
+### Minor Changes
+
+- Relaciones, permisos y plan de la propia app con Access como fuente de verdad: `relationships.list` / `relationships.write`, `permissions.checkMany` y `plans.set`, con los scopes nuevos `app-relationships:read`, `app-relationships:write` y `app-plans:write` (en `ACCESS_SCOPES`). Solo con el JWT de máquina de la app y dentro de su prefijo `<clave>/`. `@customyai/sdk` los expone en `customy.access`.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.3.0
+
 ## 0.6.0
 
 ### Minor Changes

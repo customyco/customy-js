@@ -1,7 +1,7 @@
 /**
  * Ciclo de vida de usuarios de una Connected Application hacia Customy Events.
  *
- * Emite `application.user.registered | activity | identity_updated | deleted`
+ * Emite `application.user.registered | activity | identity_updated | deleted | consent_updated`
  * (contrato genérico de `packages/contracts/src/registry.ts`) con la llave de
  * ingesta propia de la app (`x-internal-key`). Events solo acepta el sobre
  * exacto de su inquilino: `source` = clave de la app, `tenantId` =
@@ -14,10 +14,20 @@
  * y fallos de red se reintentan con backoff; 400/401/422 no.
  *
  * Base legal del bloque de identidad: relación de servicio. Nada de esto
- * autoriza marketing.
+ * autoriza marketing, salvo `consentUpdated`: los consentimientos que la
+ * persona dio, negó o retiró en la app, con la evidencia del texto mostrado,
+ * que CRM escribe en su registro de consentimientos.
  */
 import { CustomySdkError, createTransport, type RetryPolicy, type Transport } from "@customyai/core";
-import { ConnectedApplicationUserIdentitySchema, type ConnectedApplicationUserIdentity } from "./vendor/people";
+import {
+    ApplicationActivityCorrelationIdSchema,
+    ApplicationActivityPropertiesSchema,
+    ConnectedApplicationConsentsSchema,
+    ConnectedApplicationUserIdentitySchema,
+    type ApplicationActivityProperties,
+    type ConnectedApplicationConsentItem,
+    type ConnectedApplicationUserIdentity,
+} from "./vendor/people";
 import { validateInput } from "./people";
 
 export const APPLICATION_USER_EVENT_TYPES = [
@@ -25,6 +35,7 @@ export const APPLICATION_USER_EVENT_TYPES = [
     "application.user.activity",
     "application.user.identity_updated",
     "application.user.deleted",
+    "application.user.consent_updated",
 ] as const;
 export type ApplicationUserEventType = (typeof APPLICATION_USER_EVENT_TYPES)[number];
 
@@ -74,11 +85,31 @@ export type UserActivityInput = EventBase & Readonly<{
     kind: string;
     /** Recurso que la origina: hace la actividad idempotente (`<clave>:<kind>:<resourceId>:<userId>`). */
     resourceId?: string;
+    /** Hasta 8 etiquetas planas de producto (`{ area: "insights" }`): nunca datos personales. */
+    properties?: ApplicationActivityProperties;
+    /** Sesión de uso (slug ≤ 64). Opcional. */
+    sessionId?: string;
+    /** Visitante anónimo antes de registrarse (slug ≤ 64). Opcional. */
+    anonymousId?: string;
+    /** Cuenta o grupo del producto, id opaco (slug ≤ 64). Opcional. */
+    accountId?: string;
 }>;
 export type UserIdentityUpdatedInput = EventBase & Readonly<{ identity: ConnectedApplicationUserIdentity }>;
 export type UserDeletedInput = EventBase & Readonly<{
     /** `true`: supresión (derecho al olvido); CRM guarda solo una lápida de supresión. */
     erasure: boolean;
+}>;
+
+export type UserConsentUpdatedInput = EventBase & Readonly<{
+    /**
+     * 1..20 decisiones: `purpose` (vocabulario único de Customy: `marketing`,
+     * `sales`, `education`, `event`, `survey`, …), `channel` (`email`, `push`,
+     * `whatsapp`, `sms`, `in_app`, … o `*` solo para negar/retirar), `status`
+     * (`granted | denied | withdrawn`), `capturedAt`, `textVersion` (≤ 64),
+     * `textHash` opcional (sha256 hex), `source` (`signup | profile | banner |
+     * import`) y `legalBasis: "consent"`.
+     */
+    consents: readonly ConnectedApplicationConsentItem[];
 }>;
 
 export type ApplicationUserPayload = Readonly<{
@@ -87,8 +118,13 @@ export type ApplicationUserPayload = Readonly<{
     applicationUserId: string;
     accessEnvironmentId: string;
     kind?: string;
+    properties?: ApplicationActivityProperties;
+    sessionId?: string;
+    anonymousId?: string;
+    accountId?: string;
     identity?: ConnectedApplicationUserIdentity;
     erasure?: boolean;
+    consents?: readonly ConnectedApplicationConsentItem[];
 }>;
 
 /** Sobre exacto que acepta `POST /v1/events/ingest` con la llave de la app. */
@@ -122,7 +158,8 @@ export type BatchItem =
     | Readonly<{ type: "registered"; input: UserRegisteredInput }>
     | Readonly<{ type: "activity"; input: UserActivityInput }>
     | Readonly<{ type: "identity_updated"; input: UserIdentityUpdatedInput }>
-    | Readonly<{ type: "deleted"; input: UserDeletedInput }>;
+    | Readonly<{ type: "deleted"; input: UserDeletedInput }>
+    | Readonly<{ type: "consent_updated"; input: UserConsentUpdatedInput }>;
 
 export type BatchResult = ReadonlyArray<
     | Readonly<{ index: number; ok: true; receipt: IngestReceipt }>
@@ -215,6 +252,14 @@ export function createConnectedApp(options: ConnectedAppOptions) {
         };
     }
 
+    const correlationOf = (input: UserActivityInput) => {
+        const out: { sessionId?: string; anonymousId?: string; accountId?: string } = {};
+        for (const field of ["sessionId", "anonymousId", "accountId"] as const) {
+            if (input[field] !== undefined) out[field] = validateInput(ApplicationActivityCorrelationIdSchema, input[field], "events");
+        }
+        return out;
+    };
+
     const identityOf = (identity: unknown) => validateInput(ConnectedApplicationUserIdentitySchema, identity, "events");
 
     const build = {
@@ -227,7 +272,11 @@ export function createConnectedApp(options: ConnectedAppOptions) {
                 "application.user.activity",
                 input,
                 (occurredAt) => (input.resourceId ? `${applicationKey}:${input.kind}:${input.resourceId}:${input.userId}` : `${applicationKey}:activity:${input.kind}:${input.userId}:${occurredAt}`),
-                { kind: input.kind },
+                {
+                    kind: input.kind,
+                    ...(input.properties === undefined ? {} : { properties: validateInput(ApplicationActivityPropertiesSchema, input.properties, "events") }),
+                    ...correlationOf(input),
+                },
             );
         },
         identityUpdated: (input: UserIdentityUpdatedInput) =>
@@ -235,6 +284,13 @@ export function createConnectedApp(options: ConnectedAppOptions) {
         deleted: (input: UserDeletedInput) => {
             if (typeof input?.erasure !== "boolean") throw invalid("erasure", "must be a boolean");
             return envelope("application.user.deleted", input, () => `${applicationKey}:user:deleted:${input.userId}`, { erasure: input.erasure });
+        },
+        consentUpdated: async (input: UserConsentUpdatedInput) => {
+            const consents = validateInput(ConnectedApplicationConsentsSchema, input?.consents, "events");
+            // La clave sale de las decisiones (cada una lleva su `capturedAt`): el
+            // mismo cambio reenviado desde otro proceso se deduplica igual.
+            const digest = await deterministicUuid(JSON.stringify(consents));
+            return envelope("application.user.consent_updated", input, () => `${applicationKey}:user:consent_updated:${input.userId}:${digest}`, { consents });
         },
     };
 
@@ -261,6 +317,8 @@ export function createConnectedApp(options: ConnectedAppOptions) {
         identityUpdated: async (input: UserIdentityUpdatedInput, call: Call = {}) => send(await build.identityUpdated(input), call.signal),
         /** Baja de la cuenta; `erasure: true` pide supresión. */
         deleted: async (input: UserDeletedInput, call: Call = {}) => send(await build.deleted(input), call.signal),
+        /** Consentimientos que la persona dio, negó o retiró en la app (van al registro de consentimientos de CRM). */
+        consentUpdated: async (input: UserConsentUpdatedInput, call: Call = {}) => send(await build.consentUpdated(input), call.signal),
         /**
          * Envía varios eventos, en orden y con concurrencia limitada (por defecto 4).
          * Nunca lanza por un evento: cada resultado dice si entró o su error.
@@ -276,6 +334,7 @@ export function createConnectedApp(options: ConnectedAppOptions) {
                         const event = item.type === "registered" ? await build.registered(item.input)
                             : item.type === "activity" ? await build.activity(item.input)
                             : item.type === "identity_updated" ? await build.identityUpdated(item.input)
+                            : item.type === "consent_updated" ? await build.consentUpdated(item.input)
                             : await build.deleted(item.input);
                         results[index] = { index, ok: true, receipt: await send(event, opts.signal) };
                     } catch (error) {

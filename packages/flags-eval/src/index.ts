@@ -111,10 +111,49 @@ export interface EvaluationDetail {
     | "rollout"
     | "default"
     | "error";
+  /**
+   * Contract reason (D6), the one every SDK and the OpenFeature provider
+   * report. `reason` above is the legacy spelling and stays unchanged for the
+   * published SDK; `LEGACY_REASON_ALIASES` documents the mapping.
+   */
+  reasonCode: ReasonCode;
   ruleId?: string;
+  /** Legacy percentage bucket, 0..99 (`floor(ratio * 100)`). */
   bucket?: number;
+  /**
+   * Stable bucket in basis points, 0..9999 (`floor(ratio * 10000)`), where
+   * `ratio = murmur3_32("<flagKey>:<salt>:<contextKey>") / 2^32`. Raising a
+   * rollout percentage never moves a unit already inside it.
+   */
+  bucketBp?: number;
   error?: string;
 }
+
+export type ReasonCode =
+  | "default"
+  | "off"
+  | "killed"
+  | "prerequisite_failed"
+  | `rule:${string}`
+  | "rollout"
+  | `segment:${string}`
+  | "error";
+
+/** Legacy reason -> contract reason (`rule_match` is `rule:<id>` or `segment:<key>`). */
+export const LEGACY_REASON_ALIASES: Readonly<Record<EvaluationDetail["reason"], string>> = {
+  killed: "killed",
+  archived: "off",
+  prerequisite_failed: "prerequisite_failed",
+  rule_match: "rule:<id> | segment:<key>",
+  rollout: "rollout",
+  default: "default",
+  error: "error",
+};
+
+/** Longest regex pattern a rule may carry; longer ones evaluate to `error` in every SDK. */
+export const MAX_REGEX_PATTERN_LENGTH = 512;
+/** Deepest prerequisite chain `createDependencies` follows before treating the link as failed. */
+export const MAX_PREREQUISITE_DEPTH = 10;
 
 const EMPTY_DEPS: EvalDependencies = {
   treatmentOf: () => undefined,
@@ -132,7 +171,7 @@ export function evaluate(flag: FlagDefinition, context: EvalContext, deps: EvalD
     const defaultDetail = serve(flag, flag.defaultTreatment, "default");
 
     if (!context.key) {
-      return { ...defaultDetail, reason: "error", error: "missing_context_key" };
+      return { ...defaultDetail, reason: "error", reasonCode: "error", error: "missing_context_key" };
     }
     if (flag.status === "killed") return serve(flag, flag.defaultTreatment, "killed");
     if (flag.status === "archived") return serve(flag, flag.defaultTreatment, "archived");
@@ -153,10 +192,14 @@ export function evaluate(flag: FlagDefinition, context: EvalContext, deps: EvalD
             ...serve(flag, selected ?? flag.defaultTreatment, "rollout"),
             ruleId: rule.id,
             bucket: Math.floor(ratio * 100),
+            bucketBp: Math.floor(ratio * 10000),
           };
         }
+        const segmentKey = rule.condition && "op" in rule.condition && rule.condition.op === "segment"
+          ? String(rule.condition.value ?? "")
+          : undefined;
         return {
-          ...serve(flag, rule.serveTreatment ?? flag.defaultTreatment, "rule_match"),
+          ...serve(flag, rule.serveTreatment ?? flag.defaultTreatment, "rule_match", segmentKey !== undefined ? `segment:${segmentKey}` : `rule:${rule.id}`),
           ruleId: rule.id,
         };
       }
@@ -201,6 +244,29 @@ export function createSegmentResolver(segments: SegmentDefinition[]): EvalDepend
   };
 }
 
+/**
+ * Dependencies for one context over a whole snapshot: prerequisites are
+ * resolved recursively, a cycle or a chain deeper than `maxDepth` counts as
+ * "not met" (so the dependent flag serves `prerequisite_failed`) and unknown
+ * flags or segments resolve to nothing / false.
+ */
+export function createDependencies(
+  flags: FlagDefinition[],
+  segments: SegmentDefinition[],
+  context: EvalContext,
+  maxDepth = MAX_PREREQUISITE_DEPTH,
+): EvalDependencies {
+  const byKey = new Map(flags.map((flag) => [flag.key, flag]));
+  const segmentContains = createSegmentResolver(segments);
+  const resolve = (flagKey: string, trail: string[]): string | undefined => {
+    const flag = byKey.get(flagKey);
+    if (!flag || trail.includes(flagKey) || trail.length >= maxDepth) return undefined;
+    const next = [...trail, flagKey];
+    return evaluate(flag, context, { segmentContains, treatmentOf: (key) => resolve(key, next) }).treatment;
+  };
+  return { segmentContains, treatmentOf: (key) => resolve(key, []) };
+}
+
 export function pickByRollout(rollout: FlagRollout, ratio: number): string | undefined {
   const total = rollout.variants.reduce((sum, variant) => sum + Math.max(0, variant.weight), 0);
   if (total <= 0) return undefined;
@@ -215,7 +281,12 @@ export function pickByRollout(rollout: FlagRollout, ratio: number): string | und
 }
 
 
-function serve(flag: FlagDefinition, treatmentKey: string, reason: EvaluationDetail["reason"]): EvaluationDetail {
+function serve(
+  flag: FlagDefinition,
+  treatmentKey: string,
+  reason: EvaluationDetail["reason"],
+  reasonCode: ReasonCode = reason === "archived" ? "off" : (reason as ReasonCode),
+): EvaluationDetail {
   const treatment = flag.treatments.find((item) => item.key === treatmentKey);
   return {
     flagKey: flag.key,
@@ -223,6 +294,7 @@ function serve(flag: FlagDefinition, treatmentKey: string, reason: EvaluationDet
     value: treatment?.value,
     config: treatment?.config,
     reason,
+    reasonCode,
   };
 }
 
@@ -246,8 +318,11 @@ function compareValue(actual: FlagAttributeValue, op: FlagConditionOperator, exp
       return Number(actual) <= Number(expected);
     case "contains":
       return flatten(actual).some((item) => String(item).includes(String(expected)));
-    case "regex":
-      return new RegExp(String(expected)).test(String(actual ?? ""));
+    case "regex": {
+      const pattern = String(expected);
+      if (pattern.length > MAX_REGEX_PATTERN_LENGTH) throw new Error("regex_too_long");
+      return new RegExp(pattern).test(String(actual ?? ""));
+    }
     case "semver_gt":
       return compareSemver(String(actual ?? ""), String(expected ?? "")) > 0;
     case "semver_gte":

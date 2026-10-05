@@ -1,5 +1,28 @@
 # @customyai/cli
 
+## 0.4.0
+
+### Minor Changes
+
+- `customy flags | segments | experiments`: control de Customy Experiments desde la terminal (listar, leer, crear y actualizar desde JSON, archivar, restaurar, borrar, kill switch, miembros de segmentos, arrancar, pausar y concluir experimentos). Origen en `--base-url` o `CUSTOMY_EXPERIMENTS_URL`, credencial en `CUSTOMY_EXPERIMENTS_TOKEN`, `--reason` obligatorio en escrituras y `--dry-run`. Exporta `runExperimentsCli` y `EXPERIMENTS_EXIT_CODES`.
+
+## 0.3.0
+
+### Minor Changes
+
+- Informe de API al día: el esquema de acciones de agente incluye `request_operator_approval`.
+
+## 0.2.0
+
+### Minor Changes
+
+- Customy Provisioning para usuarios de PRUEBA: `@customyai/provisioning` (cliente sobre `@customyai/core` con token de máquina en memoria, `Customy-Environment` en cada petición, `Idempotency-Key` estable en reintentos, errores tipados y redacción de secretos), `createProvisioning`, el namespace `provisioning` y `@customyai/sdk/testing` (`withEphemeralUsers`) en `@customyai/sdk`, y los comandos `customy users | audit | policy | whoami | login` en `@customyai/cli`.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/provisioning@0.1.0
+
 ## 0.1.1
 
 ### Patch Changes
