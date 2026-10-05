@@ -75,3 +75,19 @@ describe("CustomyAccess auth client", () => {
         expect(headers.get("cookie")).toBe("customy.session_token=session-token.with-signature");
     });
 });
+
+describe("BaseClient request headers", () => {
+    it("omits Content-Type when there is no body and sends it with a body", async () => {
+        const fetchMock = vi.fn().mockImplementation(async () => Response.json({}));
+        const client = new CustomyAccess({ baseUrl: "https://access-api.example.test", fetch: fetchMock, retries: 0, apiKey: "k" });
+        await client.m2m.revokeApiKey("env_1", "key_1").catch(() => undefined);
+        const first = fetchMock.mock.calls[0][1];
+        expect(first.method).toBe("DELETE");
+        expect(first.body).toBeUndefined();
+        expect(Object.keys(first.headers).map((h: string) => h.toLowerCase())).not.toContain("content-type");
+        expect(first.headers["User-Agent"]).toMatch(/^customy-access-sdk\/\d+\.\d+\.\d+/);
+        expect(first.headers["User-Agent"]).not.toContain("0.2.3");
+        await client.m2m.getToken({ clientId: "a", clientSecret: "b" });
+        expect(fetchMock.mock.calls[1][1].headers["Content-Type"]).toBe("application/json");
+    });
+});

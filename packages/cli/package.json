@@ -1,6 +1,6 @@
 {
   "name": "@customyai/cli",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Customy CLI: validate, type and sync customy.app.json (customy apps ...) and provision TEST users (customy users | audit | policy | whoami). Also usable as a library.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",

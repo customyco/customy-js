@@ -9,7 +9,9 @@
       "postcss": "^8.5.23",
       "esbuild": "^0.28.1",
       "vitest": "^4.1.11",
-      "@vitest/mocker": "^4.1.11"
+      "@vitest/mocker": "^4.1.11",
+      "react": "19.2.8",
+      "react-dom": "19.2.8"
     }
   }
 }

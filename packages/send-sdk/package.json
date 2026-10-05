@@ -101,7 +101,7 @@
     "tsup": "^8.4.0",
     "@types/node": "^20.14.2",
     "@types/react": "^19.0.0",
-    "react": "^19.2.8"
+    "react": "19.2.8"
   },
   "publishConfig": {
     "access": "public",

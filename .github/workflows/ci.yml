@@ -38,4 +38,8 @@ jobs:
             pnpm dlx publint@0.3.24 --strict "$dir"
             (cd "$dir" && pnpm pack --pack-destination ../../.pack)
           done
-          for tarball in .pack/*.tgz; do pnpm dlx @arethetypeswrong/cli@0.18.5 "$tarball" --format ascii --no-emoji; done
+          for tarball in .pack/*.tgz; do
+            profile=""
+            case "$(basename "$tarball")" in customyai-stories-embed-*) profile="--profile esm-only";; esac
+            pnpm dlx @arethetypeswrong/cli@0.18.5 "$tarball" $profile --format ascii --no-emoji
+          done

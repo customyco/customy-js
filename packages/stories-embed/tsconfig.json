@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@customyai/stories-render": ["../stories-render/src/index.ts"],
+      "@customyai/stories-render/dom": ["../stories-render/src/dom/index.ts"],
+      "@customyai/stories-render/components": ["../stories-render/src/dom/components.ts"],
+      "@customyai/stories-render/client": ["../stories-render/src/client/index.ts"],
+      "@customyai/stories-render/lottie": ["../stories-render/src/lottie/index.ts"],
+      "@customyai/stories-render/video": ["../stories-render/src/video/index.ts"],
+      "@customyai/stories-render/widgets/game": ["../stories-render/src/widgets/game.ts"],
+      "@customyai/stories-render/widgets/live": ["../stories-render/src/widgets/live.ts"],
+      "@customyai/stories-render/widgets/ads": ["../stories-render/src/widgets/ads.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "../stories-render/src/raw.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

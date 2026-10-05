@@ -111,7 +111,7 @@
     "vitest": "^4.1.11",
     "tsup": "^8.0.0",
     "@types/react": "^19.0.0",
-    "react": "^19.2.8"
+    "react": "19.2.8"
   },
   "publishConfig": {
     "access": "public",
