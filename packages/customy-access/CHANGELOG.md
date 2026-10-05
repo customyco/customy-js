@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.4
+
+### Patch Changes
+
+- Send `Content-Type: application/json` only when a request has a body (fixes 400 on bodyless DELETE/POST), derive the User-Agent from the package version, and deprecate `m2m.getToken` in favour of `m2m.getMachineToken`.
+- Dependencias actualizadas:
+  - @customyai/server@0.4.0
+  - @customyai/web@0.2.2
+
 ## 0.9.3
 
 ### Patch Changes

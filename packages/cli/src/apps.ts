@@ -13,6 +13,23 @@ import { AppManifestSchema, appManifestProblems, type AppManifest } from "./vend
 
 export type Problem = { path: string; code: string };
 
+/** Mensajes para los códigos de validación de `permissions`/`roles` (el resto se enseña tal cual). */
+const PROBLEM_HINTS: Record<string, string> = {
+  PERMISSION_NAMESPACE_VIOLATION: "la clave del permiso debe empezar por «<clave-de-la-app>.»",
+  ROLE_NAMESPACE_VIOLATION: "la clave del rol debe empezar por «<clave-de-la-app>.»",
+  PERMISSION_UNDECLARED: "el rol usa un permiso que no está declarado en permissions[]",
+};
+
+export function describeProblem(problem: Problem): string {
+  const hint = PROBLEM_HINTS[problem.code];
+  return `✗ ${problem.path || "(raíz)"}: ${problem.code}${hint ? ` — ${hint}` : ""}`;
+}
+
+/** Resumen de una línea de lo que declara el manifiesto en permisos y roles. */
+export function authorizationSummary(manifest: AppManifest): string {
+  return `${manifest.permissions?.length ?? 0} permisos, ${manifest.roles?.length ?? 0} roles`;
+}
+
 export function validateManifest(input: unknown): { ok: true; manifest: AppManifest } | { ok: false; problems: Problem[] } {
   const problems = appManifestProblems(input);
   return problems.length ? { ok: false, problems } : { ok: true, manifest: AppManifestSchema.parse(input) };
@@ -29,8 +46,8 @@ export type SyncOptions = {
 
 export type ProductReconciliation =
   | { status: "skipped"; reason: string }
-  | { status: "reconciled"; changed: boolean; resourceId?: string }
-  | { status: "failed"; code: string };
+  | { status: "reconciled"; changed: boolean; resourceId?: string; permissions?: number; roles?: number; rolesOrphaned?: number }
+  | { status: "failed"; code: string; conflicts?: string[] };
 
 export type SyncResult = {
   action: "installed" | "updated" | "unchanged";

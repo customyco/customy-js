@@ -13,7 +13,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { generateAppTypes } from "./codegen.js";
-import { syncApp, validateManifest } from "./apps.js";
+import { authorizationSummary, describeProblem, syncApp, validateManifest } from "./apps.js";
 import { PROVISIONING_GROUPS, PROVISIONING_HELP, runProvisioningCli } from "./provisioning.js";
 import { EXPERIMENTS_GROUPS, EXPERIMENTS_HELP, runExperimentsCli } from "./experiments.js";
 
@@ -45,7 +45,7 @@ async function loadManifest(args: string[], io: CliIo) {
   }
   const result = validateManifest(raw);
   if (!result.ok) {
-    for (const problem of result.problems) io.err(`✗ ${problem.path || "(raíz)"}: ${problem.code}`);
+    for (const problem of result.problems) io.err(describeProblem(problem));
     return null;
   }
   return result.manifest;
@@ -67,7 +67,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   const manifest = await loadManifest(args, io);
   if (!manifest) return 1;
   if (command === "validate") {
-    io.out(`✓ ${manifest.key}: manifiesto app/v1 válido (${manifest.events.length} eventos, ${manifest.capabilities.length} capabilities)`);
+    io.out(`✓ ${manifest.key}: manifiesto app/v1 válido (${manifest.events.length} eventos, ${manifest.capabilities.length} capabilities, ${authorizationSummary(manifest)})`);
     return 0;
   }
   if (command === "codegen") {
@@ -91,11 +91,17 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
       fetch: io.fetch,
     });
     const verb = { installed: "instalada", updated: "actualizada", unchanged: "sin cambios" }[result.action];
-    io.out(`✓ ${manifest.key} ${verb}: aplicación ${result.applicationId}, entorno ${result.environmentId}, revisión ${result.revision}`);
+    io.out(`✓ ${manifest.key} ${verb}: aplicación ${result.applicationId}, entorno ${result.environmentId}, revisión ${result.revision} (${authorizationSummary(manifest)})`);
     let failed = false;
     for (const [product, outcome] of Object.entries(result.reconciliation)) {
-      if (outcome.status === "failed") { failed = true; io.err(`✗ ${product}: ${outcome.code} — vuelve a ejecutar sync para reintentar`); }
-      else if (outcome.status === "reconciled") io.out(`✓ ${product}: ${outcome.changed ? "actualizado" : "al día"}${outcome.resourceId ? ` (${outcome.resourceId})` : ""}`);
+      if (outcome.status === "failed") {
+        failed = true;
+        io.err(`✗ ${product}: ${outcome.code}${outcome.conflicts?.length ? ` (${outcome.conflicts.join(", ")})` : ""} — vuelve a ejecutar sync para reintentar`);
+      } else if (outcome.status === "reconciled") {
+        const counts = outcome.permissions !== undefined || outcome.roles !== undefined
+          ? ` (${outcome.permissions ?? 0} permisos, ${outcome.roles ?? 0} roles${outcome.rolesOrphaned ? `, ${outcome.rolesOrphaned} roles huérfanos` : ""})` : "";
+        io.out(`✓ ${product}: ${outcome.changed ? "actualizado" : "al día"}${outcome.resourceId ? ` (${outcome.resourceId})` : ""}${counts}`);
+      }
     }
     return failed ? 1 : 0;
   } catch (error) {
