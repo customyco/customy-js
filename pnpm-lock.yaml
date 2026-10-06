@@ -140,7 +140,7 @@ importers:
         specifier: ^0.4.0
         version: link:../server
       '@customyai/web':
-        specifier: ^0.2.2
+        specifier: ^0.2.3
         version: link:../web
       jose:
         specifier: ^5.2.2
@@ -174,13 +174,13 @@ importers:
   packages/customy-sdk:
     dependencies:
       '@customyai/customy-access':
-        specifier: ^0.9.5
+        specifier: ^0.9.6
         version: link:../customy-access
       '@customyai/links-sdk':
         specifier: ^0.3.1
         version: link:../links-sdk
       '@customyai/sdk':
-        specifier: ^0.14.0
+        specifier: ^0.15.1
         version: link:../sdk
       '@customyai/send-sdk':
         specifier: ^1.6.3
@@ -332,8 +332,11 @@ importers:
       '@customyai/server':
         specifier: ^0.4.0
         version: link:../server
+      '@customyai/storage':
+        specifier: ^0.1.0
+        version: link:../storage
       '@customyai/web':
-        specifier: ^0.2.2
+        specifier: ^0.2.3
         version: link:../web
       react:
         specifier: 19.2.8
@@ -554,7 +557,7 @@ importers:
         version: 8.20.0
     devDependencies:
       '@customyai/customy-sdk':
-        specifier: ^0.5.7
+        specifier: ^0.5.9
         version: link:../customy-sdk
       '@types/node':
         specifier: ^20.14.2

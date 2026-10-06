@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.6
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/web@0.2.3
+
 ## 0.9.5
 
 ### Patch Changes

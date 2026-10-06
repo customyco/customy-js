@@ -254,3 +254,38 @@ describe("origen detrás de proxies", () => {
         expect(JSON.parse(String(calls[0]!.init.body)).callbackURL).toBe(`${APP}/app`);
     });
 });
+
+describe("getServerSession: «sesión inválida» no es «Access caído»", () => {
+    const cookie = "__Secure-customy-prd.session_token=abc";
+
+    it("por defecto una caída de Access devuelve null, como siempre", async () => {
+        for (const status of [503, 500, 429]) {
+            const { fetch } = fakeFetch(() => new Response("down", { status }));
+            expect(await getServerSession(cookie, { accessUrl: ACCESS, fetch })).toBeNull();
+        }
+    });
+
+    it("con throwOnUnavailable, 5xx y 429 lanzan ACCESS_UNAVAILABLE (503), igual que los verificadores de @customyai/server", async () => {
+        for (const status of [503, 500, 429]) {
+            const { fetch } = fakeFetch(() => new Response("down", { status }));
+            await expect(getServerSession(cookie, { accessUrl: ACCESS, fetch, throwOnUnavailable: true }))
+                .rejects.toMatchObject({ code: "ACCESS_UNAVAILABLE", status: 503, service: "access" });
+        }
+    });
+
+    it("con throwOnUnavailable, un fallo de red también lanza", async () => {
+        const fetch = vi.fn(async () => { throw new TypeError("network"); }) as unknown as typeof globalThis.fetch;
+        await expect(getServerSession(cookie, { accessUrl: ACCESS, fetch, throwOnUnavailable: true })).rejects.toMatchObject({ code: "ACCESS_UNAVAILABLE" });
+    });
+
+    it("una cookie que Access rechaza sigue siendo null aunque la opción esté puesta", async () => {
+        const { fetch } = fakeFetch(() => new Response("no", { status: 401 }));
+        expect(await getServerSession(cookie, { accessUrl: ACCESS, fetch, throwOnUnavailable: true })).toBeNull();
+    });
+
+    it("sin cookie no se llama a Access y se devuelve null", async () => {
+        const { fetch, calls } = fakeFetch(() => new Response("x", { status: 503 }));
+        expect(await getServerSession("theme=dark", { accessUrl: ACCESS, fetch, throwOnUnavailable: true })).toBeNull();
+        expect(calls).toHaveLength(0);
+    });
+});

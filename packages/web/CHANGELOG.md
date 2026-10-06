@@ -1,5 +1,11 @@
 # @customyai/web
 
+## 0.2.3
+
+### Patch Changes
+
+- `getServerSession` acepta `throwOnUnavailable: true`: si Access no responde (red, plazo, 429, 5xx) lanza `ACCESS_UNAVAILABLE` (503) en vez de devolver `null`, así «sesión inválida» y «Access caído» dejan de confundirse y una caída no cierra la sesión de nadie en pantalla. Es lo mismo que ya hacen los verificadores de `@customyai/server`. Por defecto sigue devolviendo `null`.
+
 ## 0.2.2
 
 ### Patch Changes

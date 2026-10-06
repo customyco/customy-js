@@ -1,6 +1,6 @@
 {
   "name": "@customyai/sdk",
-  "version": "0.14.0",
+  "version": "0.15.1",
   "description": "The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing, Links, Provisioning and CRM People (plus any discovered product), and emits connected-app user lifecycle events from their own packages. Server only.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -197,6 +197,76 @@
         "default": "./dist/core.cjs"
       }
     },
+    "./send": {
+      "import": {
+        "types": "./dist/send.d.ts",
+        "default": "./dist/send.mjs"
+      },
+      "require": {
+        "types": "./dist/send.d.cts",
+        "default": "./dist/send.cjs"
+      }
+    },
+    "./send/inbox": {
+      "import": {
+        "types": "./dist/send-inbox.d.ts",
+        "default": "./dist/send-inbox.mjs"
+      },
+      "require": {
+        "types": "./dist/send-inbox.d.cts",
+        "default": "./dist/send-inbox.cjs"
+      }
+    },
+    "./send/inbox/react": {
+      "import": {
+        "types": "./dist/send-inbox-react.d.ts",
+        "default": "./dist/send-inbox-react.mjs"
+      },
+      "require": {
+        "types": "./dist/send-inbox-react.d.cts",
+        "default": "./dist/send-inbox-react.cjs"
+      }
+    },
+    "./storage": {
+      "import": {
+        "types": "./dist/storage.d.ts",
+        "default": "./dist/storage.mjs"
+      },
+      "require": {
+        "types": "./dist/storage.d.cts",
+        "default": "./dist/storage.cjs"
+      }
+    },
+    "./billing": {
+      "import": {
+        "types": "./dist/billing.d.ts",
+        "default": "./dist/billing.mjs"
+      },
+      "require": {
+        "types": "./dist/billing.d.cts",
+        "default": "./dist/billing.cjs"
+      }
+    },
+    "./data": {
+      "import": {
+        "types": "./dist/data.d.ts",
+        "default": "./dist/data.mjs"
+      },
+      "require": {
+        "types": "./dist/data.d.cts",
+        "default": "./dist/data.cjs"
+      }
+    },
+    "./links": {
+      "import": {
+        "types": "./dist/links.d.ts",
+        "default": "./dist/links.mjs"
+      },
+      "require": {
+        "types": "./dist/links.d.cts",
+        "default": "./dist/links.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
@@ -245,6 +315,27 @@
       ],
       "core": [
         "./dist/core.d.ts"
+      ],
+      "send": [
+        "./dist/send.d.ts"
+      ],
+      "send/inbox": [
+        "./dist/send-inbox.d.ts"
+      ],
+      "send/inbox/react": [
+        "./dist/send-inbox-react.d.ts"
+      ],
+      "storage": [
+        "./dist/storage.d.ts"
+      ],
+      "billing": [
+        "./dist/billing.d.ts"
+      ],
+      "data": [
+        "./dist/data.d.ts"
+      ],
+      "links": [
+        "./dist/links.d.ts"
       ]
     }
   },
@@ -273,7 +364,8 @@
     "@customyai/provisioning": "^0.1.0",
     "@customyai/send": "^0.7.0",
     "@customyai/server": "^0.4.0",
-    "@customyai/web": "^0.2.2",
+    "@customyai/storage": "^0.1.0",
+    "@customyai/web": "^0.2.3",
     "zod": "^3.23.8"
   },
   "peerDependencies": {

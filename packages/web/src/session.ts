@@ -27,6 +27,12 @@ export interface CustomyAuthOptions extends CustomyScopeOptions, CustomyOriginOp
     fetch?: typeof fetch;
     /** Límite de espera a Access, en ms (por defecto 8 s). */
     timeoutMs?: number;
+    /**
+     * Con `true`, si Access no responde (red, plazo, 429, 5xx) `getServerSession` lanza `ACCESS_UNAVAILABLE` (503) en vez de
+     * devolver `null`: «sesión inválida» y «Access caído» dejan de confundirse, y una caída no cierra la sesión de nadie en pantalla.
+     * Es lo mismo que hacen los verificadores de `@customyai/server`. Por defecto `false` (devuelve `null`, como hasta ahora).
+     */
+    throwOnUnavailable?: boolean;
 }
 
 export interface CustomyServerSession {
@@ -161,6 +167,9 @@ export async function getServerSession(source: CookieSource, options: CustomyAut
     if (!cookie) return null;
     const request = source && typeof source === "object" && isRequestLike(source) ? source : null;
     const result = await lookupSession(cookie, options, request);
+    if (result.kind === "unavailable" && options.throwOnUnavailable) {
+        throw new CustomySdkError({ code: "ACCESS_UNAVAILABLE", status: 503, service: "access", message: "Customy Access is unavailable to read the session" });
+    }
     if (result.kind !== "valid") return null;
     if (options.requireExactEnvironment && !sessionMatchesFixedScope(result.data, options.environmentId!)) return null;
     const actor = result.data.act && typeof result.data.act === "object" ? result.data.act as Record<string, unknown> : null;
