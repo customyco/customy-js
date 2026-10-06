@@ -104,6 +104,7 @@ describe("@customyai/access: fachada", () => {
         expect([...ACCESS_SCOPES]).toEqual([
             "capabilities:read", "users:contact:read", "users:read", "catalog:read", "flags:read",
             "app-relationships:read", "app-relationships:write", "app-plans:write",
+            "app-roles:read", "app-roles:write",
         ]);
         expect(ACCESS_SCOPES).not.toContain("relationships:write");
         expect(ACCESS_SCOPES).not.toContain("admin:*");
@@ -139,6 +140,75 @@ describe("@customyai/access: fachada", () => {
         expect(JSON.parse(api[0]!.body!)).toEqual({ writes: [tuple], deletes: [] });
         expect(JSON.parse(api[3]!.body!)).toEqual({ planCode: "premium" });
         expect(api[1]!.headers.authorization ?? api[1]!.headers.Authorization).toBe("Bearer tok:app-relationships:read");
+    });
+
+
+    it("roles de la app: listar, asignaciones, asignar y quitar, cada uno con su scope, verbo, ruta y cuerpo", async () => {
+        const token = (scope: string) => json(200, { access_token: `tok:${scope}`, expires_in: 300 });
+        const roles = [{ key: "fixture-app.moderator", name: "Moderador", description: null, permissions: ["posts.hide", "posts.pin"] }];
+        const assignment = { userId: "usr_1", roleKey: "fixture-app.moderator", source: "application", assignedAt: 1, expiresAt: null };
+        const { fetch, calls } = scripted([
+            token("app-roles:read"), json(200, { roles }),
+            json(200, { assignments: [assignment] }),
+            token("app-roles:write"), json(200, { userId: "usr_1", roleKey: "fixture-app.moderator", source: "application" }),
+            json(200, { success: true }),
+        ]);
+        const machineTokens = createMachineTokens({ issuer: BASE, clientId: "app", clientSecret: "secret", fetch });
+        const access = createAccess({ baseUrl: BASE, machineTokens, environmentId: ENV, fetch });
+
+        await expect(access.appRoles.list()).resolves.toEqual(roles);
+        await expect(access.appRoles.assignments.list({ userId: "usr_1" })).resolves.toEqual([assignment]);
+        await expect(access.appRoles.assignments.assign({ userId: "usr_1", roleKey: "fixture-app.moderator", expiresAt: 4_102_444_800_000 }))
+            .resolves.toEqual({ userId: "usr_1", roleKey: "fixture-app.moderator", source: "application" });
+        await expect(access.appRoles.assignments.revoke({ userId: "usr_1", roleKey: "fixture-app.moderator" })).resolves.toEqual({ success: true });
+
+        const tokens = calls.filter((call) => call.url.endsWith("/oauth/token")).map((call) => new URLSearchParams(call.body).get("scope"));
+        expect(tokens).toEqual(["app-roles:read", "app-roles:write"]);
+        const api = calls.filter((call) => !call.url.endsWith("/oauth/token"));
+        expect(api.map((call) => [call.method, call.url])).toEqual([
+            ["GET", `${BASE}/api/v1/env/${ENV}/app-roles`],
+            ["GET", `${BASE}/api/v1/env/${ENV}/app-role-assignments?userId=usr_1`],
+            ["PUT", `${BASE}/api/v1/env/${ENV}/app-role-assignments`],
+            ["DELETE", `${BASE}/api/v1/env/${ENV}/app-role-assignments?userId=usr_1&roleKey=fixture-app.moderator`],
+        ]);
+        expect(JSON.parse(api[2]!.body!)).toEqual({ userId: "usr_1", roleKey: "fixture-app.moderator", expiresAt: 4_102_444_800_000 });
+        expect(api[0]!.headers.authorization ?? api[0]!.headers.Authorization).toBe("Bearer tok:app-roles:read");
+    });
+
+    it("permisos efectivos: la unión de los permisos de los roles vigentes, sin nombres de rol escritos en la app", async () => {
+        const token = (scope: string) => json(200, { access_token: `tok:${scope}`, expires_in: 300 });
+        const roles = [
+            { key: "fixture-app.moderator", name: "Moderador", description: null, permissions: ["posts.hide", "posts.pin"] },
+            { key: "fixture-app.auditor", name: "Auditor", description: null, permissions: ["posts.read", "posts.pin"] },
+            { key: "fixture-app.owner", name: "Dueño", description: null, permissions: ["posts.delete"] },
+        ];
+        const row = (roleKey: string, expiresAt: number | null) => ({ userId: "usr_1", roleKey, source: "application", assignedAt: 1, expiresAt });
+        const { fetch } = scripted([
+            token("app-roles:read"), json(200, { roles }),
+            json(200, { assignments: [row("fixture-app.moderator", null), row("fixture-app.auditor", Date.now() + 60_000), row("fixture-app.owner", Date.now() - 1), row("fixture-app.removed", null)] }),
+        ]);
+        const machineTokens = createMachineTokens({ issuer: BASE, clientId: "app", clientSecret: "secret", fetch });
+        const access = createAccess({ baseUrl: BASE, machineTokens, environmentId: ENV, fetch });
+
+        await expect(access.permissions.effective("usr_1")).resolves.toEqual({
+            userId: "usr_1",
+            roles: ["fixture-app.auditor", "fixture-app.moderator"], // el caducado y el que ya no está en el manifiesto no cuentan
+            permissions: ["posts.hide", "posts.pin", "posts.read"],   // sin duplicados, ordenados
+        });
+    });
+
+    it("permisos efectivos de un usuario sin roles: vacío, no un error", async () => {
+        const token = (scope: string) => json(200, { access_token: `tok:${scope}`, expires_in: 300 });
+        const { fetch } = scripted([token("app-roles:read"), json(200, { roles: [] }), json(200, { assignments: [] })]);
+        const machineTokens = createMachineTokens({ issuer: BASE, clientId: "app", clientSecret: "secret", fetch });
+        const access = createAccess({ baseUrl: BASE, machineTokens, environmentId: ENV, fetch });
+        await expect(access.permissions.effective("usr_9")).resolves.toEqual({ userId: "usr_9", roles: [], permissions: [] });
+    });
+
+    it("roles de la app: lo que gestiona el Workspace no se pisa, y el error lo dice", async () => {
+        const { fetch } = scripted([json(409, { code: "ASSIGNMENT_MANAGED_BY_WORKSPACE" })]);
+        const access = createAccess({ baseUrl: BASE, accessToken: "tok", environmentId: ENV, fetch });
+        await expect(access.appRoles.assignments.assign({ userId: "usr_1", roleKey: "fixture-app.moderator" })).rejects.toMatchObject({ status: 409, code: "ASSIGNMENT_MANAGED_BY_WORKSPACE" });
     });
 
     it("sin entorno, las rutas de la app lo piden; un scope que falta se nombra", async () => {

@@ -1,5 +1,17 @@
 # @customyai/sdk
 
+## 0.14.0
+
+### Minor Changes
+
+- Una sola instalación para todo Customy. `@customyai/sdk` suma una ruta de importación por entorno, cada una con su propio bundle para que el navegador nunca cargue código de servidor: `@customyai/sdk/client` y `/client/react` (navegador), `/native` y `/native/react` (React Native), `/web` (Next.js y servidores web: proxy de autenticación, sesión de servidor y middleware), `/server` (verificar tokens y webhooks), `/flags`, `/flags/edge`, `/flags/react` y `/openfeature`, `/openfeature/web` (banderas), `/provisioning`, `/access` (roles y permisos de la app incluidos) y `/core`. La raíz y `/testing` no cambian. `react` es una dependencia opcional. Los paquetes pequeños (`@customyai/client`, `web`, `server`, `access`…) siguen existiendo por dentro, pero una app solo necesita instalar este.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.7.0
+  - @customyai/openfeature-provider@0.1.1
+
 ## 0.13.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.5
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.7.0
+
 ## 0.9.4
 
 ### Patch Changes

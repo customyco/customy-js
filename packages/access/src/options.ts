@@ -13,13 +13,17 @@ export const ACCESS_AUDIENCE = "customy-access";
  *  - `flags:read`: la vista completa de flags en servidor;
  *  - `app-relationships:read`: `relationships.list` y `permissions.checkMany`;
  *  - `app-relationships:write`: `relationships.write`;
- *  - `app-plans:write`: `plans.set`.
- * Los tres últimos solo valen con el JWT de máquina (`machineTokens`) y solo
- * dentro del prefijo `<clave de la app>/` de sus tipos.
+ *  - `app-plans:write`: `plans.set`;
+ *  - `app-roles:read`: `appRoles.list`, `appRoles.assignments.list` y `permissions.effective`;
+ *  - `app-roles:write`: `appRoles.assignments.assign` / `revoke`.
+ * Los de `app-relationships` y `app-plans` solo valen con el JWT de máquina (`machineTokens`)
+ * y solo dentro del prefijo `<clave de la app>/` de sus tipos; los de `app-roles`, con el JWT de
+ * máquina, en el entorno de la app y sobre los roles que declara su manifiesto.
  */
 export const ACCESS_SCOPES = [
     "capabilities:read", "users:contact:read", "users:read", "catalog:read", "flags:read",
     "app-relationships:read", "app-relationships:write", "app-plans:write",
+    "app-roles:read", "app-roles:write",
 ] as const;
 export type AccessScope = (typeof ACCESS_SCOPES)[number];
 

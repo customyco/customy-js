@@ -168,3 +168,12 @@ export type PermissionCheckInput = { subject: { type: "user"; id: string }; perm
 export type PermissionCheckResult = { allowed: boolean; via: "owner" | "direct" | `role:${string}` | null };
 
 export type MemberPlanResult = { userId: string; planCode: string | null; previousPlanCode: string | null };
+
+/** Un rol que el manifiesto de la app declara, con los permisos que concede. */
+export type AppRole = { key: string; name: string; description: string | null; permissions: string[] };
+/** Un rol de la app asignado a un usuario. `source` dice quién lo asignó (`application`, o el Workspace). */
+export type AppRoleAssignment = { userId: string; roleKey: string; source: string; assignedAt: string | number | null; expiresAt: string | number | null };
+export type AppRoleAssignInput = { userId: string; roleKey: string; /** Epoch en milisegundos; debe ser futuro. Sin valor, no caduca. */ expiresAt?: number };
+export type AppRoleAssignResult = { userId: string; roleKey: string; source: string };
+/** Los roles de un usuario en la app y los permisos que le dan, ya resueltos contra el manifiesto. */
+export type AppEffectivePermissions = { userId: string; roles: string[]; permissions: string[] };
