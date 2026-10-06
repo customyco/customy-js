@@ -38,6 +38,14 @@ export {
     type DiscoverOptions,
 } from "./discovery";
 export {
+    ACCESS_APPLICATION_PATH,
+    clearApplicationCache,
+    discoverApplication,
+    parseApplicationScope,
+    type CustomyApplication,
+    type DiscoverApplicationOptions,
+} from "./application";
+export {
     createMachineTokenProvider,
     createMachineTokens,
     type MachineTokenProvider,

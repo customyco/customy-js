@@ -1,6 +1,6 @@
 {
   "name": "@customyai/provisioning",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Customy Provisioning: create, find and clean up TEST users (identity provisioning) with an Access API key, over @customyai/core. Includes withEphemeralUsers for CI.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -68,7 +68,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/core": "^0.2.0"
+    "@customyai/core": "^0.3.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
@@ -78,6 +78,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

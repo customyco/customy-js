@@ -1,6 +1,6 @@
 {
   "name": "@customyai/client",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Customy browser client: session, sign-in, MFA, passkeys, active organization, capabilities and account linking over same-origin HttpOnly cookies, with React, native and native React bindings as subpaths. Never takes server secrets.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -96,7 +96,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/core": "^0.2.0"
+    "@customyai/core": "^0.3.0"
   },
   "peerDependencies": {
     "react": ">=18"
@@ -115,6 +115,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

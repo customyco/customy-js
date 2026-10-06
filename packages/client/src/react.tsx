@@ -37,6 +37,7 @@ import {
     summarizeCapabilityUsage,
     type AccessCommercialUsageSnapshot,
     type AccessEntitlements,
+    type AccessMeSnapshot,
     type AccessSubscriptionStatus,
     type CapabilityBootstrapSnapshot,
     type CapabilityMatrix,
@@ -45,6 +46,7 @@ import {
     type CapabilityUsagePressureSummary,
     type CapabilityUsageStatus,
 } from "./capabilities";
+import { accessGrantsFrom, type AccessGrants } from "./access-grants";
 import {
     createCustomyClient,
     type CustomyActor,
@@ -604,6 +606,24 @@ export function useCapabilityCommercialUsage(
     );
     const state = useCapabilityResource<AccessCommercialUsageSnapshot>(loader, [loader]);
     return { ...state, environmentId };
+}
+
+/**
+ * Roles y permisos del usuario en la app: `const { can, hasRole } = useAccessGrants<CustomyRole, CustomyPermission>()`.
+ * Mientras carga, o si falla, nada está concedido. Mostrar u ocultar no autoriza: tu servidor vuelve a decidir.
+ */
+export function useAccessGrants<Role extends string = string, Permission extends string = string>(
+    options: CapabilityHookOptions = {},
+): AsyncCapabilityState<AccessMeSnapshot> & AccessGrants<Role, Permission> & { environmentId: string | null } {
+    const { client, tenantHeaders } = useCustomyContext();
+    const environmentId = options.environmentId ?? resolveActiveEnvironmentId(tenantHeaders);
+    const loader = useMemo(
+        () => (options.enabled === false || !environmentId ? null : () => client.capabilities.getMe(environmentId, { userId: options.userId })),
+        [client, environmentId, options.enabled, options.userId],
+    );
+    const state = useCapabilityResource<AccessMeSnapshot>(loader, [loader]);
+    const grants = useMemo(() => accessGrantsFrom<Role, Permission>(state.data), [state.data]);
+    return { ...state, ...grants, environmentId };
 }
 
 export function useCanUseCapability(

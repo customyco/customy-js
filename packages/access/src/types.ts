@@ -39,16 +39,20 @@ export type SubscriptionStatus = {
 };
 
 /** Plan y capabilities de una app instalada por manifiesto (`customy.app.json`). */
-export type ApplicationEntitlements = {
+export type ApplicationEntitlements<Role extends string = string, Permission extends string = string> = {
     applicationKey: string;
     /** `member` (asiento), `subscription` (entorno) o `default` (plan de menor rango). */
     plan: { code: string; source: "member" | "subscription" | "default" } | null;
     /** Valor de cada capability del manifiesto: booleano, límite de un meter o configuración. */
     capabilities: Record<string, unknown>;
+    /** Roles del manifiesto que el usuario tiene vigentes (vacío sin usuario). */
+    roles?: Role[];
+    /** Permisos que esos roles le dan. */
+    permissions?: Permission[];
 };
 
 /** Respuesta de `GET /api/v1/me`. */
-export type AccessMeSnapshot = {
+export type AccessMeSnapshot<Role extends string = string, Permission extends string = string> = {
     environmentId: string;
     user: { id: string } | null;
     subscription: SubscriptionStatus;
@@ -61,7 +65,7 @@ export type AccessMeSnapshot = {
     } & Record<string, unknown>;
     modules: Array<{ key: string; label: string; state: CapabilityState; visible: boolean } & Record<string, unknown>>;
     usage: Record<string, unknown>;
-    application?: ApplicationEntitlements;
+    application?: ApplicationEntitlements<Role, Permission>;
 };
 
 export type CapabilityCheck<Capability extends string = string> = {
@@ -170,10 +174,25 @@ export type PermissionCheckResult = { allowed: boolean; via: "owner" | "direct" 
 export type MemberPlanResult = { userId: string; planCode: string | null; previousPlanCode: string | null };
 
 /** Un rol que el manifiesto de la app declara, con los permisos que concede. */
-export type AppRole = { key: string; name: string; description: string | null; permissions: string[] };
+export type AppRole<Role extends string = string, Permission extends string = string> = { key: Role; name: string; description: string | null; permissions: Permission[] };
 /** Un rol de la app asignado a un usuario. `source` dice quién lo asignó (`application`, o el Workspace). */
-export type AppRoleAssignment = { userId: string; roleKey: string; source: string; assignedAt: string | number | null; expiresAt: string | number | null };
-export type AppRoleAssignInput = { userId: string; roleKey: string; /** Epoch en milisegundos; debe ser futuro. Sin valor, no caduca. */ expiresAt?: number };
-export type AppRoleAssignResult = { userId: string; roleKey: string; source: string };
+export type AppRoleAssignment<Role extends string = string> = { userId: string; roleKey: Role; source: string; assignedAt: string | number | null; expiresAt: string | number | null };
+export type AppRoleAssignInput<Role extends string = string> = { userId: string; roleKey: Role; /** Epoch en milisegundos; debe ser futuro. Sin valor, no caduca. */ expiresAt?: number };
+export type AppRoleAssignResult<Role extends string = string> = { userId: string; roleKey: Role; source: string };
 /** Los roles de un usuario en la app y los permisos que le dan, ya resueltos contra el manifiesto. */
-export type AppEffectivePermissions = { userId: string; roles: string[]; permissions: string[] };
+export type AppEffectivePermissions<Role extends string = string, Permission extends string = string> = { userId: string; roles: Role[]; permissions: Permission[] };
+
+/** Por qué un usuario tiene o no un permiso de la app (`permissions.explain`). */
+export type PermissionExplanation<Role extends string = string, Permission extends string = string> = {
+    userId: string;
+    permission: Permission;
+    allowed: boolean;
+    /** `granted`; `expired` (tuvo un rol que lo da, caducó); `not_assigned` (el manifiesto lo declara pero no tiene ningún rol que lo dé); `not_declared` (ningún rol del manifiesto lo da). */
+    reason: "granted" | "expired" | "not_assigned" | "not_declared";
+    /** Roles vigentes del usuario que dan el permiso, con quién los asignó y cuándo caducan. */
+    grantedBy: Array<{ role: Role; source: string; expiresAt: string | number | null }>;
+    /** Roles que tuvo y caducaron y que darían el permiso. */
+    expired: Array<{ role: Role; expiredAt: string | number }>;
+    /** Todos los roles del manifiesto que dan el permiso: lo que habría que asignarle. */
+    grantableBy: Role[];
+};

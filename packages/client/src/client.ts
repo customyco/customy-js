@@ -23,6 +23,7 @@ import {
     type CapabilityUsageStatus,
     type LinkedProvider,
 } from "./capabilities";
+import { accessGrantsFrom, type AccessGrants } from "./access-grants";
 
 export interface CustomyUser {
     id: string;
@@ -362,6 +363,10 @@ export function createCustomyClient(options: CustomyClientOptions = {}) {
             getJson<AccessCommercialUsageSnapshot>(`${env(envId)}/commercial-usage${userQuery({ userId: params?.userId, capability: params?.capability })}`),
         /** Suscripción, entitlements, módulos y uso del usuario de la sesión. */
         getMe: (envId: string, params?: { userId?: string }) => getJson<AccessMeSnapshot>(`/api/v1/me${userQuery({ envId, userId: params?.userId })}`),
+        /** Roles y permisos del usuario de la sesión en la app (de `/api/v1/me`): `can("…")`, `hasRole("…")`. */
+        async getGrants<Role extends string = string, Permission extends string = string>(envId: string, params?: { userId?: string }): Promise<AccessGrants<Role, Permission>> {
+            return accessGrantsFrom<Role, Permission>(await capabilities.getMe(envId, params));
+        },
         async bootstrap(envId: string, bootstrapOptions: CapabilityBootstrapOptions = {}): Promise<CapabilityBootstrapSnapshot> {
             const [matrix, modules, usage] = await Promise.all([
                 capabilities.getMatrix(envId, { userId: bootstrapOptions.userId }),

@@ -1,6 +1,6 @@
 {
   "name": "@customyai/storage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Customy Storage for connected applications: upload bytes from memory (checksum and multipart handled), read metadata, signed download URLs and trash, over @customyai/core (typed errors, retries with Retry-After, idempotency, Access machine tokens). Server only.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -51,7 +51,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/core": "^0.2.0"
+    "@customyai/core": "^0.3.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
@@ -60,6 +60,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

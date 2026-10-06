@@ -19,7 +19,7 @@ importers:
   packages/access:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
       '@customyai/flags-eval':
         specifier: ^0.2.0
@@ -56,7 +56,7 @@ importers:
   packages/billing:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
     devDependencies:
       tsup:
@@ -72,7 +72,7 @@ importers:
   packages/cli:
     dependencies:
       '@customyai/provisioning':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: link:../provisioning
       zod:
         specifier: ^3.23.8
@@ -94,7 +94,7 @@ importers:
   packages/client:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
     devDependencies:
       '@types/react':
@@ -128,19 +128,19 @@ importers:
   packages/customy-access:
     dependencies:
       '@customyai/access':
-        specifier: ^0.7.0
+        specifier: ^0.15.0
         version: link:../access
       '@customyai/client':
-        specifier: ^0.3.0
+        specifier: ^0.4.0
         version: link:../client
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
       '@customyai/server':
-        specifier: ^0.4.0
+        specifier: ^0.4.1
         version: link:../server
       '@customyai/web':
-        specifier: ^0.2.3
+        specifier: ^0.2.4
         version: link:../web
       jose:
         specifier: ^5.2.2
@@ -174,16 +174,16 @@ importers:
   packages/customy-sdk:
     dependencies:
       '@customyai/customy-access':
-        specifier: ^0.9.6
+        specifier: ^0.9.14
         version: link:../customy-access
       '@customyai/links-sdk':
-        specifier: ^0.3.1
+        specifier: ^0.3.2
         version: link:../links-sdk
       '@customyai/sdk':
-        specifier: ^0.15.1
+        specifier: ^0.25.0
         version: link:../sdk
       '@customyai/send-sdk':
-        specifier: ^1.6.3
+        specifier: ^1.6.4
         version: link:../send-sdk
     devDependencies:
       '@types/node':
@@ -202,7 +202,7 @@ importers:
   packages/data:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
     devDependencies:
       tsup:
@@ -230,7 +230,7 @@ importers:
   packages/links:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
     devDependencies:
       tsup:
@@ -246,10 +246,10 @@ importers:
   packages/links-sdk:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
       '@customyai/links':
-        specifier: ^0.1.1
+        specifier: ^0.1.2
         version: link:../links
     devDependencies:
       '@types/node':
@@ -268,7 +268,7 @@ importers:
   packages/openfeature-provider:
     dependencies:
       '@customyai/access':
-        specifier: ^0.7.0
+        specifier: ^0.15.0
         version: link:../access
     devDependencies:
       tsup:
@@ -284,7 +284,7 @@ importers:
   packages/provisioning:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
     devDependencies:
       '@types/node':
@@ -303,41 +303,47 @@ importers:
   packages/sdk:
     dependencies:
       '@customyai/access':
-        specifier: ^0.7.0
+        specifier: ^0.15.0
         version: link:../access
       '@customyai/billing':
-        specifier: ^0.1.1
+        specifier: ^0.1.2
         version: link:../billing
       '@customyai/client':
-        specifier: ^0.3.0
+        specifier: ^0.4.0
         version: link:../client
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
+      '@customyai/customy-access':
+        specifier: ^0.9.14
+        version: link:../customy-access
       '@customyai/data':
-        specifier: ^0.2.0
+        specifier: ^0.2.1
         version: link:../data
       '@customyai/links':
-        specifier: ^0.1.1
+        specifier: ^0.1.2
         version: link:../links
       '@customyai/openfeature-provider':
-        specifier: ^0.1.1
+        specifier: ^0.1.9
         version: link:../openfeature-provider
       '@customyai/provisioning':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: link:../provisioning
       '@customyai/send':
-        specifier: ^0.7.0
+        specifier: ^0.7.1
         version: link:../send
       '@customyai/server':
-        specifier: ^0.4.0
+        specifier: ^0.4.1
         version: link:../server
       '@customyai/storage':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: link:../storage
       '@customyai/web':
-        specifier: ^0.2.3
+        specifier: ^0.2.4
         version: link:../web
+      next:
+        specifier: '>=13'
+        version: 15.5.26(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -358,7 +364,7 @@ importers:
   packages/send:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
     devDependencies:
       '@types/react':
@@ -380,10 +386,10 @@ importers:
   packages/send-sdk:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
       '@customyai/send':
-        specifier: ^0.7.0
+        specifier: ^0.7.1
         version: link:../send
     devDependencies:
       '@types/node':
@@ -408,7 +414,7 @@ importers:
   packages/server:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
       jose:
         specifier: ^5.2.2
@@ -427,7 +433,7 @@ importers:
   packages/storage:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
     devDependencies:
       tsup:
@@ -557,7 +563,7 @@ importers:
         version: 8.20.0
     devDependencies:
       '@customyai/customy-sdk':
-        specifier: ^0.5.9
+        specifier: ^0.5.19
         version: link:../customy-sdk
       '@types/node':
         specifier: ^20.14.2
@@ -575,10 +581,10 @@ importers:
   packages/web:
     dependencies:
       '@customyai/core':
-        specifier: ^0.2.0
+        specifier: ^0.3.0
         version: link:../core
       '@customyai/server':
-        specifier: ^0.4.0
+        specifier: ^0.4.1
         version: link:../server
       jose:
         specifier: ^5.2.2
@@ -4129,9 +4135,7 @@ snapshots:
       metro-runtime: 0.84.6
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.86.0': {}
 

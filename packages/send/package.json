@@ -1,6 +1,6 @@
 {
   "name": "@customyai/send",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Customy Send: email, templates, domains, webhooks, suppressions, notifications, push and in-app messages for servers, over @customyai/core (typed errors, retries with Retry-After, idempotency, Access machine tokens); ./inbox and ./inbox/react for end-user apps with a subscriber token.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -85,7 +85,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/core": "^0.2.0"
+    "@customyai/core": "^0.3.0"
   },
   "peerDependencies": {
     "react": ">=18"
@@ -104,6 +104,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

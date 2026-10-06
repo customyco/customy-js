@@ -1,5 +1,18 @@
 # @customyai/cli
 
+## 0.6.0
+
+### Minor Changes
+
+- Typed roles and permissions from the manifest: `customy apps codegen` also writes `CustomyPermission`, `CustomyRole`, `CUSTOMY_ROLE_PERMISSIONS` and `CustomyAppTypes` (and `CustomyEventProperties` is now a type alias so it satisfies the event map); `createAccess<Capability, Role, Permission>()` types `permissions.effective`, `appRoles.*`, `me()` and `AccessMeSnapshot<Role, Permission>`; `createCustomy<CustomyAppTypes>()` carries `roles` and `permissions` into `customy.access`. A misspelled role or permission fails to compile.
+
+## 0.5.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/provisioning@0.1.1
+
 ## 0.5.0
 
 ### Minor Changes

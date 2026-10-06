@@ -1,6 +1,6 @@
 {
   "name": "@customyai/data",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Customy Data: typed event tracking (track, identify, page, screen, group, alias) with batching; the scope comes from the credential, never from headers. Over @customyai/core.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -51,7 +51,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/core": "^0.2.0"
+    "@customyai/core": "^0.3.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
@@ -60,6 +60,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

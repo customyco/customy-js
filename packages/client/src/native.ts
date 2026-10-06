@@ -366,3 +366,5 @@ export function createCustomyNativeAuth(options: CustomyNativeAuthOptions) {
 }
 
 export type CustomyNativeAuth = ReturnType<typeof createCustomyNativeAuth>;
+
+export { accessGrantsFrom, type AccessGrants, type AccessGrantsSource } from "./access-grants";

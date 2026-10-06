@@ -29,8 +29,10 @@
 import {
     connectProduct,
     createMachineTokens,
+    discoverApplication,
     discoverPlatform,
     CustomySdkError,
+    type CustomyApplication,
     type CustomyPlatformConfiguration,
     type MachineTokenProvider,
     type MachineTokens,
@@ -38,7 +40,7 @@ import {
     type RetryPolicy,
     type Transport,
 } from "@customyai/core";
-import { createAccess, type CustomyAccess } from "@customyai/access";
+import { createAccess, createPermissionDirectory, type CustomyAccess, type PermissionDirectory, type PermissionDirectoryOptions } from "@customyai/access";
 import { createBilling, type CustomyBilling } from "@customyai/billing";
 import { createData, type CustomyData, type DataOptions, type EventMap } from "@customyai/data";
 import { createLinks, type CustomyLinks } from "@customyai/links";
@@ -51,11 +53,17 @@ export type CustomyAppTypes = {
     events?: EventMap;
     meters?: string;
     capabilities?: string;
+    /** Claves de rol del manifiesto (`CustomyRole`). */
+    roles?: string;
+    /** Permisos del manifiesto (`CustomyPermission`). */
+    permissions?: string;
 };
 
 type EventsOf<App extends CustomyAppTypes> = App["events"] extends EventMap ? App["events"] : EventMap;
 type MetersOf<App extends CustomyAppTypes> = App["meters"] extends string ? App["meters"] : string;
 type CapabilitiesOf<App extends CustomyAppTypes> = App["capabilities"] extends string ? App["capabilities"] : string;
+type RolesOf<App extends CustomyAppTypes> = App["roles"] extends string ? App["roles"] : string;
+type PermissionsOf<App extends CustomyAppTypes> = App["permissions"] extends string ? App["permissions"] : string;
 
 /**
  * Lo que `createCustomy` lee del manifiesto de la app (`customy.app.json`):
@@ -105,8 +113,15 @@ export type CreateCustomyOptions = Readonly<{
     timeoutMs?: number;
     /** Política de reintentos de todas las llamadas; `false` los desactiva. */
     retry?: RetryPolicy | false;
-    /** Entorno por defecto de las llamadas de Access que lo necesitan. */
+    /** Entorno por defecto de las llamadas de Access que lo necesitan. Con `discoverApplication`, sale del cliente de máquina y no hace falta. */
     environmentId?: string;
+    /**
+     * Descubre la organización, el entorno y la aplicación de Access del propio cliente de máquina al crear (`GET /api/v1/application`,
+     * una petición): `customy.application` los trae y `environmentId` deja de ser un valor de configuración. Un fallo rechaza `createCustomy`.
+     */
+    discoverApplication?: boolean;
+    /** Caché de `customy.permissions` (`ttlMs`, `maxEntries`). */
+    permissions?: PermissionDirectoryOptions;
     data?: CustomyDataSettings;
     /** Permite `http://` hacia loopback (desarrollo y tests). */
     allowLoopbackHttp?: boolean;
@@ -141,7 +156,11 @@ export type Customy<App extends CustomyAppTypes = CustomyAppTypes> = Readonly<{
     token(product: string): MachineTokenProvider;
     /** Transporte de `@customyai/core` de cualquier producto del discovery, con su URL y su token. */
     product(product: string): Transport;
-    readonly access: CustomyAccess<CapabilitiesOf<App>>;
+    /** Dónde vive la app (organización, entorno, aplicación de Access, productos); `null` si no se pidió `discoverApplication`. */
+    readonly application: CustomyApplication | null;
+    readonly access: CustomyAccess<CapabilitiesOf<App>, RolesOf<App>, PermissionsOf<App>>;
+    /** «¿Puede este usuario hacer X?» sin nombres de rol: `can`, `require`, `hasRole`, con caché corta y fallando cerrado. */
+    readonly permissions: PermissionDirectory<RolesOf<App>, PermissionsOf<App>>;
     readonly data: CustomyData<EventsOf<App>>;
     readonly send: CustomySend;
     readonly billing: CustomyBilling<MetersOf<App>>;
@@ -167,6 +186,10 @@ export async function createCustomy<App extends CustomyAppTypes = CustomyAppType
     const machineTokens = createMachineTokens({
         issuer: options.issuer, clientId: options.clientId, clientSecret: options.clientSecret, platform, scopes: byProduct, fetch: options.fetch,
     });
+    const application = options.discoverApplication
+        ? await discoverApplication({ issuer: options.issuer, machineTokens, platform, fetch: options.fetch, timeoutMs: options.timeoutMs })
+        : null;
+    const environmentId = options.environmentId ?? application?.environmentId;
     const connection = (key: string): ProductClientOptions => ({
         platform, machineTokens, scopes: byProduct[key], fetch: options.fetch, timeoutMs: options.timeoutMs, retry: options.retry,
         allowLoopbackHttp: options.allowLoopbackHttp, allowPrivateHttp: options.allowPrivateHttp,
@@ -176,6 +199,7 @@ export async function createCustomy<App extends CustomyAppTypes = CustomyAppType
         if (!cache.has(key)) cache.set(key, build());
         return cache.get(key) as T;
     };
+    const access = () => once("access", () => createAccess<CapabilitiesOf<App>, RolesOf<App>, PermissionsOf<App>>({ ...connection("access"), environmentId }));
     const discovered = (product: string) => {
         const entry = platform.products[product];
         if (!entry) throw new CustomySdkError({ code: "SDK_PRODUCT_NOT_DISCOVERED", service: product, message: `Product ${product} is not in the platform discovery` });
@@ -185,10 +209,14 @@ export async function createCustomy<App extends CustomyAppTypes = CustomyAppType
     return {
         platform,
         machineTokens,
+        application,
         token: (product) => machineTokens.forProduct(product),
         product: (product) => once(`product:${product}`, () => connectProduct(connection(product), { key: product, audience: discovered(product).audience }).transport),
         get access() {
-            return once("access", () => createAccess<CapabilitiesOf<App>>({ ...connection("access"), environmentId: options.environmentId }));
+            return access();
+        },
+        get permissions() {
+            return once("permissions", () => createPermissionDirectory<RolesOf<App>, PermissionsOf<App>>(access(), options.permissions));
         },
         get data() {
             return once("data", () => createData<EventsOf<App>>({ ...options.data, ...connection("data") }));

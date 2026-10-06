@@ -1,5 +1,11 @@
 # @customyai/core
 
+## 0.3.0
+
+### Minor Changes
+
+- `discoverApplication({ issuer, publishableKey | machineTokens | accessToken })` (`@customyai/sdk/core`) returns the application scope of a credential — organization, environment, Access application, product endpoints — from `GET /api/v1/application`, cached with a ttl and typed as `CustomySdkError`; and `createAccessAdmin` (`@customyai/sdk/admin`) is a typed Access admin client for a Next/node/edge runtime: cookie or bearer forwarding, environment scope headers, session with roles/capabilities, `me`, directory members, provisioning status, workspace config, governance token and a raw `fetch` for private bridges.
+
 ## 0.2.0
 
 ### Minor Changes

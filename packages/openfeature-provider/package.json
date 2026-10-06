@@ -1,6 +1,6 @@
 {
   "name": "@customyai/openfeature-provider",
-  "version": "0.1.1",
+  "version": "0.1.9",
   "description": "OpenFeature provider for Customy Experiments: server and web, with local evaluation over the Access flags snapshot or remote evaluation (POST /v1/flags/evaluate), change events, track() to conversions and exposure reporting.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -68,7 +68,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/access": "^0.7.0"
+    "@customyai/access": "^0.15.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
@@ -77,6 +77,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

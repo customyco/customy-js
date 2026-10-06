@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.4
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.3.0
+  - @customyai/send@0.7.1
+
 ## 1.6.3
 
 ### Patch Changes

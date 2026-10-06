@@ -130,6 +130,10 @@ export interface AccessApplicationEntitlements {
     plan: { code: string; source: "member" | "subscription" | "default" } | null;
     /** Valor de cada capability del manifiesto: boolean, límite de un meter o configuración. */
     capabilities: Record<string, unknown>;
+    /** Claves de los roles del manifiesto que el usuario tiene vigentes en la app (vacío sin usuario). */
+    roles?: string[];
+    /** Permisos que esos roles le dan, resueltos contra el manifiesto: la app no lleva nombres de rol. */
+    permissions?: string[];
 }
 
 export interface CapabilityMatrixItem extends CapabilityDecision {

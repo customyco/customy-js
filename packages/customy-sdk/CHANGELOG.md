@@ -1,5 +1,85 @@
 # @customyai/customy-sdk
 
+## 0.5.19
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.25.0
+  - @customyai/customy-access@0.9.14
+
+## 0.5.18
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.24.0
+  - @customyai/customy-access@0.9.13
+
+## 0.5.17
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.23.0
+
+## 0.5.16
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.22.0
+  - @customyai/customy-access@0.9.12
+
+## 0.5.15
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.21.0
+  - @customyai/customy-access@0.9.11
+
+## 0.5.14
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.20.0
+  - @customyai/customy-access@0.9.10
+
+## 0.5.13
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.19.0
+  - @customyai/customy-access@0.9.9
+
+## 0.5.12
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.18.0
+  - @customyai/customy-access@0.9.8
+
+## 0.5.11
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.17.0
+  - @customyai/customy-access@0.9.7
+  - @customyai/links-sdk@0.3.2
+  - @customyai/send-sdk@1.6.4
+
+## 0.5.10
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/sdk@0.16.0
+
 ## 0.5.9
 
 ### Patch Changes

@@ -43,19 +43,37 @@ export function schemaToType(schema: JsonSchema | undefined, indent = ""): strin
 }
 
 export function generateAppTypes(manifest: AppManifest): string {
+  const roles = manifest.roles ?? [];
+  const permissions = (manifest.permissions ?? []).map((permission) => permission.key);
   const events = manifest.events.map((event) => `  ${literal(event.name)}: ${schemaToType(event.properties as JsonSchema, "  ")};`);
   return [
     `// Generado por \`customy apps codegen\` desde customy.app.json (${manifest.key}). No editar a mano.`,
     "",
     `export type CustomyEventName = ${union(manifest.events.map((event) => event.name))};`,
     "",
-    "export interface CustomyEventProperties {",
+    "export type CustomyEventProperties = {",
     ...events,
-    "}",
+    "};",
     "",
     `export type CustomyCapability = ${union(manifest.capabilities.map((capability) => capability.lookupKey))};`,
     `export type CustomyPlan = ${union(manifest.plans.map((plan) => plan.code))};`,
     `export type CustomyMeter = ${union(manifest.meters.map((meter) => meter.code))};`,
+    "",
+    "/** Permisos y roles del manifiesto (`permissions[]`, `roles[]`): la app pregunta por permisos y nunca escribe un nombre de rol. */",
+    `export type CustomyPermission = ${union(permissions)};`,
+    `export type CustomyRole = ${union(roles.map((role) => role.key))};`,
+    "",
+    "/** Lo que da cada rol, tal como lo declara el manifiesto. */",
+    `export const CUSTOMY_ROLE_PERMISSIONS = {\n${roles.map((role) => `  ${literal(role.key)}: ${literal(role.permissions)},`).join("\n")}\n} as const satisfies Record<CustomyRole, readonly CustomyPermission[]>;`,
+    "",
+    "/** Los tipos de la app juntos: `createCustomy<CustomyAppTypes>()`, `createAccess<CustomyCapability, CustomyRole, CustomyPermission>()`. */",
+    "export type CustomyAppTypes = {",
+    "  events: CustomyEventProperties;",
+    "  meters: CustomyMeter;",
+    "  capabilities: CustomyCapability;",
+    "  roles: CustomyRole;",
+    "  permissions: CustomyPermission;",
+    "};",
     "",
     "/** Propósitos de consentimiento que exige cada evento. */",
     `export const CUSTOMY_EVENT_PURPOSES = {\n${manifest.events.map((event) => `  ${literal(event.name)}: ${literal(event.purposes)},`).join("\n")}\n} as const;`,
