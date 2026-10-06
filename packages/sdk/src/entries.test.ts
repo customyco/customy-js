@@ -15,11 +15,19 @@ const expected: Array<[string, () => Promise<Record<string, unknown>>, string[]]
     ["provisioning", () => import("./provisioning"), ["createProvisioning"]],
     ["access", () => import("./access"), ["createAccess", "ACCESS_SCOPES"]],
     ["core", () => import("./core"), ["createMachineTokens", "discoverPlatform"]],
+    ["send", () => import("./send"), ["createSend"]],
+    ["send/inbox", () => import("./send-inbox"), []],
+    ["send/inbox/react", () => import("./send-inbox-react"), []],
+    ["storage", () => import("./storage"), []],
+    ["billing", () => import("./billing"), ["createBilling"]],
+    ["data", () => import("./data"), ["createData"]],
+    ["links", () => import("./links"), ["createLinks"]],
 ];
 
 describe("@customyai/sdk: una instalación, una ruta por entorno", () => {
     it.each(expected)("@customyai/sdk/%s exporta lo que promete", async (_path, load, names) => {
         const module = await load();
+        expect(Object.keys(module).length, "la ruta no exporta nada").toBeGreaterThan(0);
         for (const name of names) expect(module, `falta ${name}`).toHaveProperty(name);
     });
 

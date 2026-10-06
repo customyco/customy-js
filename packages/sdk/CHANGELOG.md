@@ -1,5 +1,18 @@
 # @customyai/sdk
 
+## 0.15.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/web@0.2.3
+
+## 0.15.0
+
+### Minor Changes
+
+- El paquete único cubre también los productos. Nuevas rutas de importación: `@customyai/sdk/send` (correo, push y bandeja), `/send/inbox` y `/send/inbox/react` (la bandeja en la app, navegador y móvil), `/storage` (archivos), `/billing`, `/data` y `/links`. Cada una con su bundle, igual que las anteriores. Una app ya no necesita instalar `@customyai/send`, `@customyai/storage` ni los demás por separado; los que siguen separados son los componentes de interfaz (`stories-*`).
+
 ## 0.14.0
 
 ### Minor Changes
