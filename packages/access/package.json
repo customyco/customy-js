@@ -1,6 +1,6 @@
 {
   "name": "@customyai/access",
-  "version": "0.7.0",
+  "version": "0.16.0",
   "description": "Customy Access: capabilities, catalog, users and user contact, flags and the generated client for every public Access operation, over @customyai/core.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -107,7 +107,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/core": "^0.2.0",
+    "@customyai/core": "^0.3.0",
     "@customyai/flags-eval": "^0.2.0"
   },
   "peerDependencies": {
@@ -131,6 +131,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

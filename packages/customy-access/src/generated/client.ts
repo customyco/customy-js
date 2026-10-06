@@ -1027,6 +1027,16 @@ export class CustomyAccessGeneratedClient {
     return this.request<TResponse>("getEnvEnvIdAgencyGuardrails", options);
   }
 
+  /** Get Env Agency Plans */
+  getEnvEnvIdAgencyPlans<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("getEnvEnvIdAgencyPlans", options);
+  }
+
+  /** Get Env Agency Plans */
+  getEnvEnvIdAgencyPlansCodeVersion<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("getEnvEnvIdAgencyPlansCodeVersion", options);
+  }
+
   /** Get Env Agent Governance Posture */
   getEnvEnvIdAgentGovernancePosture<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
     return this.request<TResponse>("getEnvEnvIdAgentGovernancePosture", options);
@@ -1325,6 +1335,21 @@ export class CustomyAccessGeneratedClient {
   /** Get Env Catalog Versions */
   getEnvEnvIdCatalogVersionsVersion<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
     return this.request<TResponse>("getEnvEnvIdCatalogVersionsVersion", options);
+  }
+
+  /** Get Env Commercial Agencies */
+  getEnvEnvIdCommercialAgencies<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("getEnvEnvIdCommercialAgencies", options);
+  }
+
+  /** Get Env Commercial Relationships */
+  getEnvEnvIdCommercialRelationships<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("getEnvEnvIdCommercialRelationships", options);
+  }
+
+  /** Get Env Commercial Relationships */
+  getEnvEnvIdCommercialRelationshipsOrgId<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("getEnvEnvIdCommercialRelationshipsOrgId", options);
   }
 
   /** Get Admin Env Commercial Usage */
@@ -1760,6 +1785,11 @@ export class CustomyAccessGeneratedClient {
   /** Get Env Orgs Entitlement Override */
   getEnvEnvIdOrgsOrgIdEntitlementOverride<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
     return this.request<TResponse>("getEnvEnvIdOrgsOrgIdEntitlementOverride", options);
+  }
+
+  /** Get Orgs Entitlements Explain */
+  getEnvEnvIdOrgsOrgIdEntitlementsExplain<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("getEnvEnvIdOrgsOrgIdEntitlementsExplain", options);
   }
 
   /** Get Env Orgs Price Override */
@@ -2922,6 +2952,31 @@ export class CustomyAccessGeneratedClient {
     return this.request<TResponse>("postEnvEnvIdAccountLinkingRollbackHistoryId", options);
   }
 
+  /** Create or execute Env Agency Plans */
+  postEnvEnvIdAgencyPlans<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("postEnvEnvIdAgencyPlans", options);
+  }
+
+  /** Create or execute Agency Plans Archive */
+  postEnvEnvIdAgencyPlansCodeVersionArchive<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("postEnvEnvIdAgencyPlansCodeVersionArchive", options);
+  }
+
+  /** Create or execute Agency Plans Migrate Subscribers */
+  postEnvEnvIdAgencyPlansCodeVersionMigrateSubscribers<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("postEnvEnvIdAgencyPlansCodeVersionMigrateSubscribers", options);
+  }
+
+  /** Create or execute Agency Plans Simulate */
+  postEnvEnvIdAgencyPlansSimulate<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("postEnvEnvIdAgencyPlansSimulate", options);
+  }
+
+  /** Create or execute Agency Plans Validate */
+  postEnvEnvIdAgencyPlansValidate<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("postEnvEnvIdAgencyPlansValidate", options);
+  }
+
   /** Activate agent governance kill switch */
   postEnvEnvIdAgentGovernanceKillSwitch<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
     return this.request<TResponse>("postEnvEnvIdAgentGovernanceKillSwitch", options);
@@ -3245,6 +3300,11 @@ export class CustomyAccessGeneratedClient {
   /** Create or execute Env Catalog Seed */
   postEnvEnvIdCatalogSeed<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
     return this.request<TResponse>("postEnvEnvIdCatalogSeed", options);
+  }
+
+  /** Create or execute Commercial Settlement Resolve */
+  postEnvEnvIdCommercialSettlementResolve<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("postEnvEnvIdCommercialSettlementResolve", options);
   }
 
   /** Create or execute Admin Env Conditional Assignments */
@@ -4400,6 +4460,11 @@ export class CustomyAccessGeneratedClient {
   /** Replace Admin Env Breach Notification Config */
   putEnvEnvIdBreachNotificationConfig<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
     return this.request<TResponse>("putEnvEnvIdBreachNotificationConfig", options);
+  }
+
+  /** Replace Env Commercial Relationships */
+  putEnvEnvIdCommercialRelationshipsOrgId<TResponse = unknown>(options: CustomyAccessGeneratedRequestOptions = {}): Promise<TResponse> {
+    return this.request<TResponse>("putEnvEnvIdCommercialRelationshipsOrgId", options);
   }
 
   /** Replace Admin Env Connected Application */

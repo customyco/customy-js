@@ -1,5 +1,64 @@
 # @customyai/access
 
+## 0.16.0
+
+### Minor Changes
+
+- Commercial surface: `plans.migrateSubscribers` moves pinned subscribers to a newer active plan version (dry run by default), `simulate` reports the subscribers affected by a plan change, operators get `catalogPlanCodes` in the agency plans listing, and the generated client covers the 13 commercial operations.
+
+## 0.15.0
+
+### Minor Changes
+
+- `admin.commercial`: types for the `settlement` section of `explain` (`SettlementResult`, `SettlementLeg`, `SettlementMargin`, `SettlementStep`, `SettlementListPriceSource`, `SettlementMode`; `EntitlementExplanation.settlement`), `ExplainStepCode` (open: `ExplainStep.code` still accepts any string), the subscription policy states `past_due` (grace) and `soft_blocked` (read-only) as `SubscriptionPolicyState` / `SubscriptionAccessMode`, and `commercial.settlement.resolve(...)` for the operator-only, read-only `POST /commercial/settlement/resolve`. Additive only.
+
+## 0.14.0
+
+### Minor Changes
+
+- `access.permissions.explain(userId, permission)` and the pure `explainPermission`: why a user has or lacks an app permission (`granted` / `expired` / `not_assigned` / `not_declared`, the roles that grant it, the expired ones and the roles that would), also in `createFakeAccess`.
+
+## 0.13.0
+
+### Minor Changes
+
+- Typed connected-app entry for servers: `createCustomy({ issuer, clientId, clientSecret, discoverApplication: true })` takes the organization, environment and Access application from the machine client (`customy.application`), so no environment id is configured; `customy.permissions` (and `createPermissionDirectory(access)` in `@customyai/access`) answers `can` / `canAny` / `canAll` / `hasRole` / `require` with a short per-user cache, de-duplicated reads and fail-closed errors (`CustomyAccessError` 403 `PERMISSION_DENIED`), typed by the manifest's roles and permissions.
+
+## 0.12.0
+
+### Minor Changes
+
+- `admin.commercial` gains `plans.get(code, version)` (a plan the organization sees, with its content), `plans.simulate(plan)` (what a save would decide plus the entitlements it would grant, the price margin over cost and the differences against its base and previous version; nothing is stored) and `relationships.agencies({ search, limit })` (platform operators: every agency with its edge). `relationships.get` also returns `canEdit` and `options`: for each choice on the edge (payer, controller, resale, plan creation, maximum discount, allowlist) whether the caller may pick it and, when not, the rule that refuses it. Only additions: existing calls and fields are unchanged.
+
+## 0.11.0
+
+### Minor Changes
+
+- Typed roles and permissions from the manifest: `customy apps codegen` also writes `CustomyPermission`, `CustomyRole`, `CUSTOMY_ROLE_PERMISSIONS` and `CustomyAppTypes` (and `CustomyEventProperties` is now a type alias so it satisfies the event map); `createAccess<Capability, Role, Permission>()` types `permissions.effective`, `appRoles.*`, `me()` and `AccessMeSnapshot<Role, Permission>`; `createCustomy<CustomyAppTypes>()` carries `roles` and `permissions` into `customy.access`. A misspelled role or permission fails to compile.
+
+## 0.10.0
+
+### Minor Changes
+
+- Roles and permissions of the signed-in user in the app, typed, so apps never hardcode role names: `AccessMeSnapshot.application.roles` / `.permissions` (the `/api/v1/me` block) in the client and `@customyai/access` types; `accessGrantsFrom<Role, Permission>(meOrGrants)` returns `can`, `canAny`, `canAll`, `hasRole`, `hasAnyRole`; `createCustomyClient().capabilities.getGrants(envId)`; the `useAccessGrants()` hook in `@customyai/sdk/client/react` and, for apps native, `useAccessGrants(load)` in `@customyai/sdk/native/react` (your API reads `/me` with its machine token). Showing or hiding never authorizes: the server still decides.
+
+## 0.9.0
+
+### Minor Changes
+
+- `createAccessAdmin(...).commercial` (`@customyai/sdk/admin`, `@customyai/sdk/access`): agency plans, the commercial relationship per org-tree edge (payer, controller, resale and plan-creation rights, wholesale cost basis, plan allowlist; versioned) and `explain`, a read-only deterministic answer to "which plan does this workspace have, inherited from whom, under which ceilings", with its steps and an inputs hash. Writes are decided by Access: an agency can never grant more than it holds and an agency plan never exceeds its base plan or sells below cost; a refusal is a `CustomySdkError` with the list of violations in `body.violations`.
+
+## 0.8.0
+
+### Minor Changes
+
+- `discoverApplication({ issuer, publishableKey | machineTokens | accessToken })` (`@customyai/sdk/core`) returns the application scope of a credential — organization, environment, Access application, product endpoints — from `GET /api/v1/application`, cached with a ttl and typed as `CustomySdkError`; and `createAccessAdmin` (`@customyai/sdk/admin`) is a typed Access admin client for a Next/node/edge runtime: cookie or bearer forwarding, environment scope headers, session with roles/capabilities, `me`, directory members, provisioning status, workspace config, governance token and a raw `fetch` for private bridges.
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.3.0
+
 ## 0.7.0
 
 ### Minor Changes

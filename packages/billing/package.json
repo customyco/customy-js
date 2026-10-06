@@ -1,6 +1,6 @@
 {
   "name": "@customyai/billing",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Customy Billing for apps: report usage of the meters an app declares, with its Access identity, over @customyai/core.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -51,7 +51,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/core": "^0.2.0"
+    "@customyai/core": "^0.3.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
@@ -60,6 +60,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

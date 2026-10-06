@@ -1,5 +1,12 @@
 # @customyai/send
 
+## 0.7.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.3.0
+
 ## 0.7.0
 
 ### Minor Changes

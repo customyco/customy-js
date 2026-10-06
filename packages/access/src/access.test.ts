@@ -2,7 +2,7 @@ import { createMachineTokens, CustomySdkError } from "@customyai/core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { createFlagsClient, type CustomyFlagsSnapshot } from "./flags";
 import { ACCESS_OPERATIONS, createAccessApi, expandPath } from "./generated";
-import { ACCESS_SCOPES, capabilityFromSnapshot, createAccess, CustomyAccessError, type AccessMeSnapshot } from "./index";
+import { ACCESS_SCOPES, capabilityFromSnapshot, createAccess, explainPermission, CustomyAccessError, type AccessMeSnapshot } from "./index";
 
 type Call = { url: string; method: string; headers: Record<string, string>; body?: string };
 
@@ -195,6 +195,41 @@ describe("@customyai/access: fachada", () => {
             roles: ["fixture-app.auditor", "fixture-app.moderator"], // el caducado y el que ya no está en el manifiesto no cuentan
             permissions: ["posts.hide", "posts.pin", "posts.read"],   // sin duplicados, ordenados
         });
+    });
+
+    it("roles y permisos tipados desde el manifiesto (createAccess<Capability, Role, Permission>)", () => {
+        type Role = "fixture-app.moderator" | "fixture-app.owner";
+        type Permission = "posts.hide" | "posts.delete";
+        const access = createAccess<"reports.view", Role, Permission>({ baseUrl: BASE, accessToken: "tok", environmentId: ENV });
+        expectTypeOf(access.permissions.effective).returns.resolves.toEqualTypeOf<{ userId: string; roles: Role[]; permissions: Permission[] }>();
+        expectTypeOf(access.appRoles.assignments.assign).parameter(0).toMatchTypeOf<{ userId: string; roleKey: Role }>();
+        expectTypeOf(access.appRoles.assignments.revoke).parameter(0).toEqualTypeOf<{ userId: string; roleKey: Role }>();
+        expectTypeOf<Parameters<typeof access.appRoles.assignments.assign>[0]["roleKey"]>().not.toEqualTypeOf<string>();
+        expectTypeOf(access.me).returns.resolves.toMatchTypeOf<{ application?: { roles?: Role[]; permissions?: Permission[] } }>();
+    });
+
+    it("explain: dice por qué sí o por qué no, con los roles vigentes, los caducados y los que lo darían", async () => {
+        const roles = [
+            { key: "fixture-app.moderator", name: "Moderador", description: null, permissions: ["posts.hide", "posts.pin"] },
+            { key: "fixture-app.auditor", name: "Auditor", description: null, permissions: ["posts.pin"] },
+            { key: "fixture-app.owner", name: "Dueño", description: null, permissions: ["posts.delete"] },
+        ];
+        const row = (roleKey: string, source: string, expiresAt: number | null) => ({ userId: "usr_1", roleKey, source, assignedAt: 1, expiresAt });
+        const now = 1_000_000;
+        const assignments = [row("fixture-app.moderator", "application", null), row("fixture-app.auditor", "workspace", now + 5), row("fixture-app.owner", "application", now - 1), { ...row("fixture-app.moderator", "x", null), userId: "usr_2" }];
+        const explain = (permission: string, userId = "usr_1") => explainPermission({ userId, permission, roles, assignments, now });
+        expect(explain("posts.pin")).toMatchObject({ allowed: true, reason: "granted", grantedBy: [{ role: "fixture-app.moderator", source: "application", expiresAt: null }, { role: "fixture-app.auditor", source: "workspace", expiresAt: now + 5 }], grantableBy: ["fixture-app.auditor", "fixture-app.moderator"] });
+        expect(explain("posts.delete")).toMatchObject({ allowed: false, reason: "expired", grantedBy: [], expired: [{ role: "fixture-app.owner", expiredAt: now - 1 }], grantableBy: ["fixture-app.owner"] });
+        expect(explain("posts.hide", "usr_3")).toMatchObject({ allowed: false, reason: "not_assigned", grantableBy: ["fixture-app.moderator"] });
+        expect(explain("posts.ghost")).toMatchObject({ allowed: false, reason: "not_declared", grantableBy: [] });
+
+        const token = (scope: string) => json(200, { access_token: `tok:${scope}`, expires_in: 300 });
+        const { fetch, calls } = scripted([token("app-roles:read"), json(200, { roles }), json(200, { assignments: assignments.filter((a) => a.userId === "usr_1") })]);
+        const machineTokens = createMachineTokens({ issuer: BASE, clientId: "app", clientSecret: "secret", fetch });
+        const access = createAccess({ baseUrl: BASE, machineTokens, environmentId: ENV, fetch });
+        const live = await access.permissions.explain("usr_1", "posts.hide");
+        expect(live).toMatchObject({ allowed: true, reason: "granted" });
+        expect(calls.filter((call) => call.url.includes("/app-role")).map((call) => call.url.replace(BASE, ""))).toEqual([`/api/v1/env/${ENV}/app-roles`, `/api/v1/env/${ENV}/app-role-assignments?userId=usr_1`]);
     });
 
     it("permisos efectivos de un usuario sin roles: vacío, no un error", async () => {

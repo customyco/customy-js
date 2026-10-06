@@ -1,5 +1,18 @@
 # @customyai/client
 
+## 0.4.0
+
+### Minor Changes
+
+- Roles and permissions of the signed-in user in the app, typed, so apps never hardcode role names: `AccessMeSnapshot.application.roles` / `.permissions` (the `/api/v1/me` block) in the client and `@customyai/access` types; `accessGrantsFrom<Role, Permission>(meOrGrants)` returns `can`, `canAny`, `canAll`, `hasRole`, `hasAnyRole`; `createCustomyClient().capabilities.getGrants(envId)`; the `useAccessGrants()` hook in `@customyai/sdk/client/react` and, for apps native, `useAccessGrants(load)` in `@customyai/sdk/native/react` (your API reads `/me` with its machine token). Showing or hiding never authorizes: the server still decides.
+
+## 0.3.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

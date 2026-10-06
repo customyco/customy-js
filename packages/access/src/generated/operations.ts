@@ -261,6 +261,10 @@ export const ACCESS_OPERATIONS = {
   getEnvEnvIdAccountLinkingUserIdProviders: { method: "GET", path: "/api/v1/env/{envId}/account-linking/{userId}/providers", query: ["limit","cursor"] },
   /** Get Env Agency Guardrails */
   getEnvEnvIdAgencyGuardrails: { method: "GET", path: "/api/admin/env/{envId}/agency/guardrails", query: ["limit","cursor"] },
+  /** Get Env Agency Plans */
+  getEnvEnvIdAgencyPlans: { method: "GET", path: "/api/admin/env/{envId}/agency/plans" },
+  /** Get Env Agency Plans */
+  getEnvEnvIdAgencyPlansCodeVersion: { method: "GET", path: "/api/admin/env/{envId}/agency/plans/{code}/{version}" },
   /** Get Env Agent Governance Posture */
   getEnvEnvIdAgentGovernancePosture: { method: "GET", path: "/api/admin/env/{envId}/agent-governance/posture", query: ["limit","cursor"] },
   /** Get Admin Env Agent Identities */
@@ -381,6 +385,12 @@ export const ACCESS_OPERATIONS = {
   getEnvEnvIdCatalogVersions: { method: "GET", path: "/api/admin/env/{envId}/catalog/versions", query: ["limit","cursor"] },
   /** Get Env Catalog Versions */
   getEnvEnvIdCatalogVersionsVersion: { method: "GET", path: "/api/admin/env/{envId}/catalog/versions/{version}" },
+  /** Get Env Commercial Agencies */
+  getEnvEnvIdCommercialAgencies: { method: "GET", path: "/api/admin/env/{envId}/commercial/agencies" },
+  /** Get Env Commercial Relationships */
+  getEnvEnvIdCommercialRelationships: { method: "GET", path: "/api/admin/env/{envId}/commercial/relationships" },
+  /** Get Env Commercial Relationships */
+  getEnvEnvIdCommercialRelationshipsOrgId: { method: "GET", path: "/api/admin/env/{envId}/commercial/relationships/{orgId}" },
   /** Get Admin Env Commercial Usage */
   getEnvEnvIdCommercialUsage: { method: "GET", path: "/api/admin/env/{envId}/commercial-usage", query: ["limit","cursor"] },
   /** Get Admin Env Compliance Report */
@@ -555,6 +565,8 @@ export const ACCESS_OPERATIONS = {
   getEnvEnvIdOrganizationsOrganizationIdBranding: { method: "GET", path: "/api/admin/env/{envId}/organizations/{organizationId}/branding", query: ["limit","cursor"] },
   /** Get Env Orgs Entitlement Override */
   getEnvEnvIdOrgsOrgIdEntitlementOverride: { method: "GET", path: "/api/admin/env/{envId}/orgs/{orgId}/entitlement-override", query: ["limit","cursor"] },
+  /** Get Orgs Entitlements Explain */
+  getEnvEnvIdOrgsOrgIdEntitlementsExplain: { method: "GET", path: "/api/admin/env/{envId}/orgs/{orgId}/entitlements/explain" },
   /** Get Env Orgs Price Override */
   getEnvEnvIdOrgsOrgIdPriceOverride: { method: "GET", path: "/api/admin/env/{envId}/orgs/{orgId}/price-override", query: ["limit","cursor"] },
   /** Get Env Orgs Subscription */
@@ -1019,6 +1031,16 @@ export const ACCESS_OPERATIONS = {
   postEnvEnvIdAccountLinkingManual: { method: "POST", path: "/api/v1/env/{envId}/account-linking/manual" },
   /** Create or execute Env Account Linking Rollback */
   postEnvEnvIdAccountLinkingRollbackHistoryId: { method: "POST", path: "/api/v1/env/{envId}/account-linking/rollback/{historyId}" },
+  /** Create or execute Env Agency Plans */
+  postEnvEnvIdAgencyPlans: { method: "POST", path: "/api/admin/env/{envId}/agency/plans" },
+  /** Create or execute Agency Plans Archive */
+  postEnvEnvIdAgencyPlansCodeVersionArchive: { method: "POST", path: "/api/admin/env/{envId}/agency/plans/{code}/{version}/archive" },
+  /** Create or execute Agency Plans Migrate Subscribers */
+  postEnvEnvIdAgencyPlansCodeVersionMigrateSubscribers: { method: "POST", path: "/api/admin/env/{envId}/agency/plans/{code}/{version}/migrate-subscribers" },
+  /** Create or execute Agency Plans Simulate */
+  postEnvEnvIdAgencyPlansSimulate: { method: "POST", path: "/api/admin/env/{envId}/agency/plans/simulate" },
+  /** Create or execute Agency Plans Validate */
+  postEnvEnvIdAgencyPlansValidate: { method: "POST", path: "/api/admin/env/{envId}/agency/plans/validate" },
   /** Activate agent governance kill switch */
   postEnvEnvIdAgentGovernanceKillSwitch: { method: "POST", path: "/api/admin/env/{envId}/agent-governance/kill-switch" },
   /** Create or execute Admin Env Agent Identities */
@@ -1149,6 +1171,8 @@ export const ACCESS_OPERATIONS = {
   postEnvEnvIdCatalogRollback: { method: "POST", path: "/api/admin/env/{envId}/catalog/rollback" },
   /** Create or execute Env Catalog Seed */
   postEnvEnvIdCatalogSeed: { method: "POST", path: "/api/admin/env/{envId}/catalog/seed" },
+  /** Create or execute Commercial Settlement Resolve */
+  postEnvEnvIdCommercialSettlementResolve: { method: "POST", path: "/api/admin/env/{envId}/commercial/settlement/resolve" },
   /** Create or execute Admin Env Conditional Assignments */
   postEnvEnvIdConditionalAssignments: { method: "POST", path: "/api/admin/env/{envId}/conditional-assignments" },
   /** Create or execute Env Conditional Assignments Dry Run */
@@ -1611,6 +1635,8 @@ export const ACCESS_OPERATIONS = {
   putEnvEnvIdBrandingWidgetsWidgetKey: { method: "PUT", path: "/api/admin/env/{envId}/branding/widgets/{widgetKey}" },
   /** Replace Admin Env Breach Notification Config */
   putEnvEnvIdBreachNotificationConfig: { method: "PUT", path: "/api/admin/env/{envId}/breach-notification-config" },
+  /** Replace Env Commercial Relationships */
+  putEnvEnvIdCommercialRelationshipsOrgId: { method: "PUT", path: "/api/admin/env/{envId}/commercial/relationships/{orgId}" },
   /** Replace Admin Env Connected Application */
   putEnvEnvIdConnectedApplication: { method: "PUT", path: "/api/admin/env/{envId}/connected-application" },
   /** Replace Admin Env Connections */
@@ -1683,5 +1709,5 @@ export const ACCESS_OPERATIONS = {
   verifyOrgCustomerKey: { method: "POST", path: "/api/admin/env/{envId}/orgs/{orgId}/customer-key/verify" },
 } as const;
 
-/** 838 operaciones. */
+/** 851 operaciones. */
 export type AccessOperationId = keyof typeof ACCESS_OPERATIONS;
