@@ -1,5 +1,12 @@
 # @customyai/server
 
+## 0.4.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.3.0
+
 ## 0.4.0
 
 ### Minor Changes

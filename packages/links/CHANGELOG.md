@@ -1,5 +1,12 @@
 # @customyai/links
 
+## 0.1.2
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.3.0
+
 ## 0.1.1
 
 ### Patch Changes

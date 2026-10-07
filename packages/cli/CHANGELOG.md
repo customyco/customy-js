@@ -1,5 +1,24 @@
 # @customyai/cli
 
+## 0.7.0
+
+### Minor Changes
+
+- Environment discovery without hand-written ids: `createCustomy` resolves the Access URL, the Workspace environment and the project from `CUSTOMY_ACCESS_URL` (falls back to `CUSTOMY_ISSUER`), `CUSTOMY_WORKSPACE_ENVIRONMENT_ID` and `CUSTOMY_PROJECT_ID` (explicit option, then variable, then what `discoverApplication` found), `issuer` is now optional, and `customy.apps` fills `organizationId`, `projectId` and `accessEnvironmentId` the same way. `readCustomyEnvironment` is exported. Typed capability values: `customy apps codegen` also writes `CustomyCapabilityValues` (and `capabilityValues` in `CustomyAppTypes`), and `typedCapability` narrows the `value` of a check; existing code keeps compiling. `createFakeAccess` simulates sessions (`sessions.create/get/revoke`) and discovery (`application()`, `environment()`).
+
+## 0.6.0
+
+### Minor Changes
+
+- Typed roles and permissions from the manifest: `customy apps codegen` also writes `CustomyPermission`, `CustomyRole`, `CUSTOMY_ROLE_PERMISSIONS` and `CustomyAppTypes` (and `CustomyEventProperties` is now a type alias so it satisfies the event map); `createAccess<Capability, Role, Permission>()` types `permissions.effective`, `appRoles.*`, `me()` and `AccessMeSnapshot<Role, Permission>`; `createCustomy<CustomyAppTypes>()` carries `roles` and `permissions` into `customy.access`. A misspelled role or permission fails to compile.
+
+## 0.5.1
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/provisioning@0.1.1
+
 ## 0.5.0
 
 ### Minor Changes

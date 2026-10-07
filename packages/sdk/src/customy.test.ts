@@ -1,6 +1,6 @@
 import { CustomySdkError } from "@customyai/core";
-import { describe, expect, it } from "vitest";
-import { createCustomy } from "./index";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import { createCustomy, typedCapability } from "./index";
 
 const ISSUER = "https://access.fixture.invalid";
 const discovery = {
@@ -37,6 +37,58 @@ function platform(responses: Record<string, unknown> = {}) {
 const authorization = (call: Call | undefined) => new Headers(call?.init.headers).get("authorization");
 const tokenRequests = (calls: Call[]) => calls.filter((call) => call.url.endsWith("/oauth/token"));
 const credentials = { issuer: ISSUER, clientId: "app_1", clientSecret: "s3cret" };
+
+describe("createCustomy: one connected-app entry (discovery, tokens, access, permissions)", () => {
+    const application = { organizationId: "org_1", environmentId: "env_1", applicationId: "app_1", applicationKey: "bonu" };
+    const roles = { roles: [{ key: "bonu.admin", name: "Admin", description: null, permissions: ["bonu.funds.manage"] }] };
+    const assignments = { assignments: [{ userId: "usr_1", roleKey: "bonu.admin", source: "application", assignedAt: 1, expiresAt: null }] };
+
+    it("discoverApplication takes the environment from the machine client: no environment id in configuration", async () => {
+        const { calls, fetchImpl } = platform({
+            [`${ISSUER}/api/v1/application`]: application,
+            [`${ISSUER}/api/v1/env/env_1/app-roles`]: roles,
+            [`${ISSUER}/api/v1/env/env_1/app-role-assignments`]: assignments,
+        });
+        const customy = await createCustomy<{ roles: "bonu.admin"; permissions: "bonu.funds.manage" | "bonu.funds.read" }>({ ...credentials, fetch: fetchImpl, discoverApplication: true });
+        expect(customy.application).toMatchObject({ organizationId: "org_1", environmentId: "env_1", applicationKey: "bonu" });
+        expect(authorization(calls.find((call) => call.url.startsWith(`${ISSUER}/api/v1/application`)))).toBe("Bearer token-for-customy-access");
+        expect(await customy.permissions.can("usr_1", "bonu.funds.manage")).toBe(true);
+        expect(await customy.permissions.can("usr_1", "bonu.funds.read")).toBe(false);
+        expect(await customy.permissions.hasRole("usr_1", "bonu.admin")).toBe(true);
+        await customy.permissions.require("usr_1", "bonu.funds.manage");
+        await expect(customy.permissions.require("usr_1", "bonu.funds.read")).rejects.toMatchObject({ code: "PERMISSION_DENIED", status: 403 });
+        expect(calls.filter((call) => call.url.includes("/app-roles"))).toHaveLength(1); // the directory cached the answer
+        expectTypeOf(customy.permissions.can).parameter(1).toEqualTypeOf<"bonu.funds.manage" | "bonu.funds.read">();
+    });
+
+    it("without discoverApplication there is no application and an explicit environmentId still works", async () => {
+        const { calls, fetchImpl } = platform({ [`${ISSUER}/api/v1/env/env_9/app-roles`]: roles, [`${ISSUER}/api/v1/env/env_9/app-role-assignments`]: assignments });
+        const customy = await createCustomy({ ...credentials, fetch: fetchImpl, environmentId: "env_9" });
+        expect(customy.application).toBeNull();
+        expect(calls.some((call) => call.url.includes("/api/v1/application"))).toBe(false);
+        expect(await customy.permissions.hasRole("usr_1", "bonu.admin")).toBe(true);
+    });
+
+    it("a failed discovery rejects createCustomy with the Access error", async () => {
+        const fetchImpl = (async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith("/.well-known/customy-configuration")) return Response.json(discovery);
+            if (url.endsWith("/oauth/token")) return Response.json({ access_token: "t", token_type: "Bearer", expires_in: 300 });
+            return Response.json({ error: "APPLICATION_NOT_FOUND" }, { status: 404 });
+        }) as typeof fetch;
+        await expect(createCustomy({ ...credentials, fetch: fetchImpl, discoverApplication: true, retry: false })).rejects.toBeInstanceOf(CustomySdkError);
+    });
+});
+
+describe("createCustomy: roles and permissions typed from the manifest", () => {
+    it("customy.access carries the Role and Permission unions", async () => {
+        const { fetchImpl } = platform();
+        type App = { capabilities: "ai.coach"; roles: "app.admin" | "app.viewer"; permissions: "app.read" | "app.manage" };
+        const customy = await createCustomy<App>({ ...credentials, fetch: fetchImpl });
+        expectTypeOf(customy.access.permissions.effective).returns.resolves.toMatchTypeOf<{ roles: Array<"app.admin" | "app.viewer">; permissions: Array<"app.read" | "app.manage"> }>();
+        expectTypeOf(customy.access.capabilities.check).parameter(0).toEqualTypeOf<"ai.coach">();
+    });
+});
 
 describe("createCustomy", () => {
     it("descubre la plataforma y pide un token por audiencia, una sola vez", async () => {
@@ -159,5 +211,56 @@ describe("scopes: manifiesto y Access perezoso", () => {
         expect(scopesFromManifest({ products: [{ product: "customy-crm", scopes: ["crm:read"] }, { product: "voice", scopes: ["v:1"] }, { product: "customy-send", scopes: [] }] }, customy.platform))
             .toEqual({ crm: ["crm:read"] });
         expect(scopesFromManifest(undefined, customy.platform)).toEqual({});
+    });
+});
+
+describe("createCustomy: environment variables", () => {
+    const application = { organizationId: "org_1", environmentId: "env_disc", applicationId: "app_1", applicationKey: "bonu" };
+
+    it("takes the Access URL from CUSTOMY_ACCESS_URL and lets the variables override what discovery found", async () => {
+        const { fetchImpl } = platform({ [`${ISSUER}/api/v1/application`]: application });
+        const customy = await createCustomy({
+            clientId: "app_1", clientSecret: "s3cret", fetch: fetchImpl, discoverApplication: true,
+            env: { CUSTOMY_ACCESS_URL: `${ISSUER}/`, CUSTOMY_WORKSPACE_ENVIRONMENT_ID: "env_override", CUSTOMY_PROJECT_ID: "prj_1" },
+        });
+        expect(customy.environmentId).toBe("env_override");
+        expect(customy.projectId).toBe("prj_1");
+        expect(customy.application?.environmentId).toBe("env_disc");
+    });
+
+    it("explicit options beat variables, and discovery is the fallback", async () => {
+        const { fetchImpl } = platform({ [`${ISSUER}/api/v1/application`]: application });
+        const explicit = await createCustomy({ ...credentials, fetch: fetchImpl, environmentId: "env_opt", env: { CUSTOMY_WORKSPACE_ENVIRONMENT_ID: "env_var" } });
+        expect(explicit.environmentId).toBe("env_opt");
+        const discovered = await createCustomy({ ...credentials, fetch: fetchImpl, discoverApplication: true, env: {} });
+        expect(discovered.environmentId).toBe("env_disc");
+        expect(discovered.projectId).toBeUndefined();
+    });
+
+    it("needs an issuer from the option or CUSTOMY_ACCESS_URL / CUSTOMY_ISSUER", async () => {
+        await expect(createCustomy({ clientId: "a", clientSecret: "b", env: {} })).rejects.toMatchObject({ code: "SDK_ISSUER_REQUIRED" });
+        const { fetchImpl } = platform();
+        await expect(createCustomy({ clientId: "a", clientSecret: "b", fetch: fetchImpl, env: { CUSTOMY_ISSUER: ISSUER } })).resolves.toBeDefined();
+    });
+
+    it("customy.apps fills organization, project and Access environment from discovery and variables, and names what is missing", async () => {
+        const { fetchImpl } = platform({ [`${ISSUER}/api/v1/application`]: application });
+        const apps = { applicationKey: "bonu", ingestKey: "ik_fixture_".padEnd(40, "x"), environment: "staging" as const };
+        const complete = await createCustomy({ ...credentials, fetch: fetchImpl, discoverApplication: true, apps, env: { CUSTOMY_PROJECT_ID: "prj_1" } });
+        const envelope = await complete.apps.envelopes.registered({ userId: "11111111-1111-4111-8111-111111111111" });
+        expect(envelope).toMatchObject({ organizationId: "org_1", projectId: "prj_1" });
+        expect(envelope.payload).toMatchObject({ accessEnvironmentId: "env_disc" });
+        const incomplete = await createCustomy({ ...credentials, fetch: fetchImpl, discoverApplication: true, apps, env: {} });
+        expect(() => incomplete.apps).toThrow(/projectId/);
+    });
+});
+
+describe("typedCapability", () => {
+    it("narrows the value to the manifest type without changing the check", () => {
+        type App = { capabilities: "export.pdf" | "ai.coach"; capabilityValues: { "export.pdf": boolean; "ai.coach": number } };
+        const check = { capability: "ai.coach" as const, allowed: true, value: 3, source: "application" as const, plan: "free" };
+        const typed = typedCapability<App, "ai.coach">(check);
+        expectTypeOf(typed.value).toEqualTypeOf<number>();
+        expect(typed).toBe(check);
     });
 });

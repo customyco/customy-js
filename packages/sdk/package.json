@@ -1,6 +1,6 @@
 {
   "name": "@customyai/sdk",
-  "version": "0.15.1",
+  "version": "0.26.1",
   "description": "The whole Customy platform with one app identity: createCustomy() reads the environment discovery, holds the app's machine tokens and composes Access, Data, Send, Billing, Links, Provisioning and CRM People (plus any discovered product), and emits connected-app user lifecycle events from their own packages. Server only.",
   "license": "MIT",
   "author": "Customy <hello@customy.ai>",
@@ -267,6 +267,86 @@
         "default": "./dist/links.cjs"
       }
     },
+    "./app": {
+      "import": {
+        "types": "./dist/app.d.ts",
+        "default": "./dist/app.mjs"
+      },
+      "require": {
+        "types": "./dist/app.d.cts",
+        "default": "./dist/app.cjs"
+      }
+    },
+    "./app/react": {
+      "import": {
+        "types": "./dist/app-react.d.ts",
+        "default": "./dist/app-react.mjs"
+      },
+      "require": {
+        "types": "./dist/app-react.d.cts",
+        "default": "./dist/app-react.cjs"
+      }
+    },
+    "./app/nextjs": {
+      "import": {
+        "types": "./dist/app-nextjs.d.ts",
+        "default": "./dist/app-nextjs.mjs"
+      },
+      "require": {
+        "types": "./dist/app-nextjs.d.cts",
+        "default": "./dist/app-nextjs.cjs"
+      }
+    },
+    "./app/cookies": {
+      "import": {
+        "types": "./dist/app-cookies.d.ts",
+        "default": "./dist/app-cookies.mjs"
+      },
+      "require": {
+        "types": "./dist/app-cookies.d.cts",
+        "default": "./dist/app-cookies.cjs"
+      }
+    },
+    "./app/flags": {
+      "import": {
+        "types": "./dist/app-flags.d.ts",
+        "default": "./dist/app-flags.mjs"
+      },
+      "require": {
+        "types": "./dist/app-flags.d.cts",
+        "default": "./dist/app-flags.cjs"
+      }
+    },
+    "./app/edge": {
+      "import": {
+        "types": "./dist/app-edge.d.ts",
+        "default": "./dist/app-edge.mjs"
+      },
+      "require": {
+        "types": "./dist/app-edge.d.cts",
+        "default": "./dist/app-edge.cjs"
+      }
+    },
+    "./app/server": {
+      "import": {
+        "types": "./dist/app-server.d.ts",
+        "default": "./dist/app-server.mjs"
+      },
+      "require": {
+        "types": "./dist/app-server.d.cts",
+        "default": "./dist/app-server.cjs"
+      }
+    },
+    "./admin": {
+      "import": {
+        "types": "./dist/admin.d.ts",
+        "default": "./dist/admin.mjs"
+      },
+      "require": {
+        "types": "./dist/admin.d.cts",
+        "default": "./dist/admin.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
@@ -336,6 +416,30 @@
       ],
       "links": [
         "./dist/links.d.ts"
+      ],
+      "app": [
+        "./dist/app.d.ts"
+      ],
+      "app/react": [
+        "./dist/app-react.d.ts"
+      ],
+      "app/nextjs": [
+        "./dist/app-nextjs.d.ts"
+      ],
+      "app/cookies": [
+        "./dist/app-cookies.d.ts"
+      ],
+      "app/flags": [
+        "./dist/app-flags.d.ts"
+      ],
+      "app/edge": [
+        "./dist/app-edge.d.ts"
+      ],
+      "app/server": [
+        "./dist/app-server.d.ts"
+      ],
+      "admin": [
+        "./dist/admin.d.ts"
       ]
     }
   },
@@ -354,24 +458,29 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@customyai/access": "^0.7.0",
-    "@customyai/billing": "^0.1.1",
-    "@customyai/client": "^0.3.0",
-    "@customyai/core": "^0.2.0",
-    "@customyai/data": "^0.2.0",
-    "@customyai/links": "^0.1.1",
-    "@customyai/openfeature-provider": "^0.1.1",
-    "@customyai/provisioning": "^0.1.0",
-    "@customyai/send": "^0.7.0",
-    "@customyai/server": "^0.4.0",
-    "@customyai/storage": "^0.1.0",
-    "@customyai/web": "^0.2.3",
+    "@customyai/access": "^0.16.0",
+    "@customyai/billing": "^0.1.2",
+    "@customyai/client": "^0.4.0",
+    "@customyai/core": "^0.3.0",
+    "@customyai/customy-access": "^0.10.0",
+    "@customyai/data": "^0.2.1",
+    "@customyai/links": "^0.1.2",
+    "@customyai/openfeature-provider": "^0.1.10",
+    "@customyai/provisioning": "^0.1.1",
+    "@customyai/send": "^0.7.1",
+    "@customyai/server": "^0.4.1",
+    "@customyai/storage": "^0.1.1",
+    "@customyai/web": "^0.2.4",
     "zod": "^3.23.8"
   },
   "peerDependencies": {
+    "next": ">=13",
     "react": ">=18"
   },
   "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    },
     "react": {
       "optional": true
     }
@@ -383,6 +492,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

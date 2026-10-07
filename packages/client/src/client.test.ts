@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCustomyClient, createSocialSignInUrl, CustomySdkError, fetchRealtimeTicket, resolveCustomyAccessClientConfig, summarizeCapabilityUsage } from "./index";
+import { accessGrantsFrom, createCustomyClient, createSocialSignInUrl, CustomySdkError, fetchRealtimeTicket, resolveCustomyAccessClientConfig, summarizeCapabilityUsage } from "./index";
 
 type Call = { url: string; init: RequestInit };
 
@@ -195,5 +195,34 @@ describe("configuration", () => {
             organizationSlug: undefined,
             publishableKey: "pk_1",
         });
+    });
+});
+
+describe("roles and permissions of the app (/me application block)", () => {
+    const me = { environmentId: "env_1", user: { id: "user_1" }, application: { applicationKey: "bonu", plan: { code: "black", source: "member" }, capabilities: {}, roles: ["owner"], permissions: ["fund:invite", "fund:read"] } };
+
+    it("getGrants reads /api/v1/me and answers can / hasRole without role names in the app", async () => {
+        const { fetch, calls } = fakeFetch(() => json(me));
+        const client = createCustomyClient({ baseUrl: "https://app.fixture.invalid", fetch });
+        const grants = await client.capabilities.getGrants("env_1");
+        expect(calls[0]!.url).toContain("/api/v1/me?envId=env_1");
+        expect(grants.can("fund:invite")).toBe(true);
+        expect(grants.can("fund:delete")).toBe(false);
+        expect(grants.hasRole("owner")).toBe(true);
+        expect(grants.hasAnyRole("viewer", "owner")).toBe(true);
+        expect(grants.canAll("fund:invite", "fund:read")).toBe(true);
+        expect(grants.canAny("x", "fund:read")).toBe(true);
+        expect(grants.plan).toBe("black");
+        expect(grants.applicationKey).toBe("bonu");
+    });
+
+    it("grants nothing without a snapshot, without the application block or from an older server", () => {
+        for (const source of [null, undefined, {}, { application: undefined }, { application: { applicationKey: "a", plan: null, capabilities: {} } }]) {
+            const grants = accessGrantsFrom(source as never);
+            expect(grants.roles).toEqual([]);
+            expect(grants.can("anything")).toBe(false);
+            expect(grants.hasRole("owner")).toBe(false);
+        }
+        expect(accessGrantsFrom({ roles: ["a"], permissions: ["p"] }).can("p")).toBe(true);
     });
 });

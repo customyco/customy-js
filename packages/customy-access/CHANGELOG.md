@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.10.0
+
+### Minor Changes
+
+- The generated Access client covers the commercial operations (agency plans, relationships, explain, subscriber migration).
+
+## 0.9.15
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.16.0
+
+## 0.9.14
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.15.0
+
+## 0.9.13
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.14.0
+
+## 0.9.12
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.13.0
+
+## 0.9.11
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.12.0
+
+## 0.9.10
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.11.0
+
+## 0.9.9
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/client@0.4.0
+  - @customyai/access@0.10.0
+
+## 0.9.8
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/access@0.9.0
+
+## 0.9.7
+
+### Patch Changes
+
+- Dependencias actualizadas:
+  - @customyai/core@0.3.0
+  - @customyai/access@0.8.0
+  - @customyai/client@0.3.1
+  - @customyai/server@0.4.1
+  - @customyai/web@0.2.4
+
 ## 0.9.6
 
 ### Patch Changes

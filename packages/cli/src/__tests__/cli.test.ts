@@ -14,6 +14,14 @@ const manifest = {
   capabilities: [{ lookupKey: "habits.unlimited", name: "Unlimited", type: "boolean" }],
   plans: [{ code: "pro", name: "Pro", capabilities: { "habits.unlimited": true } }],
   meters: [{ code: "coach.runs", aggregation: "count", unit: "run" }],
+  permissions: [
+    { key: "example-app.habits.read", description: "Ver hábitos" },
+    { key: "example-app.habits.manage", description: "Gestionar hábitos" },
+  ],
+  roles: [
+    { key: "example-app.admin", name: "Admin", description: "", permissions: ["example-app.habits.read", "example-app.habits.manage"] },
+    { key: "example-app.viewer", name: "Viewer", description: "", permissions: ["example-app.habits.read"] },
+  ],
 };
 
 function workspace(content: unknown = manifest) {
@@ -35,6 +43,21 @@ describe("codegen", () => {
     expect(source).toMatch(/"habit\.completed": \{\n\s+habitId: string;\n\s+streak\?: number;\n\s+mood\?: "good" \| "bad";/);
     expect(source).toContain('export type CustomyCapability = "habits.unlimited";');
     expect(source).toContain('export type CustomyMeter = "coach.runs";');
+    expect(source).toMatch(/export type CustomyCapabilityValues = \{\n\s+"habits\.unlimited": boolean;\n\};/);
+    expect(source).toContain("  capabilityValues: CustomyCapabilityValues;");
+    expect(source).toContain('export type CustomyPermission = "example-app.habits.read" | "example-app.habits.manage";');
+    expect(source).toContain('export type CustomyRole = "example-app.admin" | "example-app.viewer";');
+    expect(source).toContain('"example-app.viewer": ["example-app.habits.read"],');
+    expect(source).toContain("export type CustomyAppTypes = {");
+  });
+
+  it("sin permisos ni roles declarados los tipos son never y el mapa queda vacío", () => {
+    const { permissions: _p, roles: _r, ...bare } = manifest;
+    const validated = validateManifest(bare);
+    if (!validated.ok) throw new Error("manifest fixture must be valid");
+    const source = generateAppTypes(validated.manifest);
+    expect(source).toContain("export type CustomyPermission = never;");
+    expect(source).toContain("export type CustomyRole = never;");
   });
 });
 

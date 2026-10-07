@@ -27,6 +27,7 @@ export {
     type SocialSignInOptions,
     type SocialSignInUrlOptions,
 } from "./client";
+export { accessGrantsFrom, type AccessGrants, type AccessGrantsSource } from "./access-grants";
 export {
     getCapabilityFromMatrix,
     getModuleFromMatrix,
